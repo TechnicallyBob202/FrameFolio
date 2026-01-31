@@ -302,23 +302,44 @@ export default function App() {
     }
   };
 
+  const handleRescan = async () => {
+    try {
+      const response = await fetch(`${API_URL}/rescan`, {
+        method: 'POST',
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        alert(`Found and registered ${data.added} new image files`);
+        fetchData();
+      }
+    } catch (error) {
+      console.error('Rescan failed:', error);
+    }
+  };
+
   return (
     <div className="app">
       <header className="header">
         <div className="header-content">
-          <h1>ImageTagger</h1>
+          <h1>FrameTagger</h1>
           <p className="subtitle">Curate your collection with precision</p>
         </div>
-        <label className="upload-btn">
-          <input
-            type="file"
-            multiple
-            onChange={handleFileUpload}
-            accept="image/*"
-            hidden
-          />
-          Upload Images
-        </label>
+        <div className="header-buttons">
+          <button className="rescan-btn" onClick={handleRescan} title="Scan uploads folder for new images">
+            Rescan Folder
+          </button>
+          <label className="upload-btn">
+            <input
+              type="file"
+              multiple
+              onChange={handleFileUpload}
+              accept="image/*"
+              hidden
+            />
+            Upload Images
+          </label>
+        </div>
       </header>
 
       <div className="container">

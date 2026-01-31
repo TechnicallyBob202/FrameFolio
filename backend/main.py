@@ -39,7 +39,7 @@ class Tag(Base):
     __tablename__ = "tags"
     id = Column(Integer, primary_key=True)
     name = Column(String, unique=True)
-    color = Column(String, default="#6366f1")  # Indigo default
+    color = Column(String, default="#6366f1")
     images = relationship("Image", secondary=image_tags, back_populates="tags")
 
 # Create tables
@@ -50,7 +50,6 @@ class TagSchema(BaseModel):
     id: Optional[int] = None
     name: str
     color: str = "#6366f1"
-
     class Config:
         from_attributes = True
 
@@ -60,7 +59,6 @@ class ImageSchema(BaseModel):
     original_filename: str
     created_at: Optional[datetime] = None
     tags: List[TagSchema] = []
-
     class Config:
         from_attributes = True
 
@@ -70,12 +68,11 @@ class ImageListSchema(BaseModel):
     original_filename: str
     created_at: datetime
     tags: List[TagSchema]
-
     class Config:
         from_attributes = True
 
 # FastAPI app
-app = FastAPI(title="ImageTagger")
+app = FastAPI(title="FrameTagger")
 
 # CORS
 app.add_middleware(
@@ -97,18 +94,66 @@ def get_db():
     finally:
         db.close()
 
-# Routes
+# Scan uploads directory and add missing files to database
+def scan_and_register_files(db: Session = None):
+    """Scan uploads directory and register any files not in database"""
+    close_db = False
+    if db is None:
+        db = SessionLocal()
+        close_db = True
+    
+    added = 0
+    try:
+        # Get all image files in uploads directory
+        image_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tiff'}
+        files_on_disk = {
+            f.name for f in UPLOAD_DIR.glob('*')
+            if f.is_file() and f.suffix.lower() in image_extensions
+        }
+        
+        # Get all registered filenames in database
+        registered_files = {
+            img.filename for img in db.query(Image).all()
+        }
+        
+        # Add any missing files
+        for filename in files_on_disk - registered_files:
+            file_path = UPLOAD_DIR / filename
+            db_image = Image(
+                filename=filename,
+                original_filename=filename,
+                path=str(file_path),
+                created_at=datetime.fromtimestamp(file_path.stat().st_ctime)
+            )
+            db.add(db_image)
+            added += 1
+        
+        if added > 0:
+            db.commit()
+            print(f"[Startup] Registered {added} new image files from uploads directory")
+    except Exception as e:
+        print(f"Error scanning uploads directory: {e}")
+        db.rollback()
+    finally:
+        if close_db:
+            db.close()
+    
+    return added
 
+# Startup event
+@app.on_event("startup")
+async def startup_event():
+    """Scan uploads directory on startup"""
+    scan_and_register_files()
+
+# Routes
 @app.get("/api/images", response_model=List[ImageListSchema])
 def get_images(skip: int = 0, limit: int = 100, tag_ids: Optional[str] = None, db: Session = Depends(get_db)):
     query = db.query(Image)
-    
-    # Filter by tags if provided
     if tag_ids:
         tag_list = [int(tid) for tid in tag_ids.split(",")]
         for tag_id in tag_list:
             query = query.filter(Image.tags.any(Tag.id == tag_id))
-    
     return query.offset(skip).limit(limit).all()
 
 @app.get("/api/images/{image_id}", response_model=ImageSchema)
@@ -122,28 +167,22 @@ def get_image(image_id: int, db: Session = Depends(get_db)):
 def add_tag_to_image(image_id: int, tag_id: int, db: Session = Depends(get_db)):
     image = db.query(Image).filter(Image.id == image_id).first()
     tag = db.query(Tag).filter(Tag.id == tag_id).first()
-    
     if not image or not tag:
         raise HTTPException(status_code=404, detail="Image or tag not found")
-    
     if tag not in image.tags:
         image.tags.append(tag)
         db.commit()
-    
     return {"status": "success"}
 
 @app.delete("/api/images/{image_id}/tags/{tag_id}")
 def remove_tag_from_image(image_id: int, tag_id: int, db: Session = Depends(get_db)):
     image = db.query(Image).filter(Image.id == image_id).first()
     tag = db.query(Tag).filter(Tag.id == tag_id).first()
-    
     if not image or not tag:
         raise HTTPException(status_code=404, detail="Image or tag not found")
-    
     if tag in image.tags:
         image.tags.remove(tag)
         db.commit()
-    
     return {"status": "success"}
 
 @app.get("/api/tags", response_model=List[TagSchema])
@@ -155,7 +194,6 @@ def create_tag(tag: TagSchema, db: Session = Depends(get_db)):
     existing = db.query(Tag).filter(Tag.name == tag.name).first()
     if existing:
         raise HTTPException(status_code=400, detail="Tag already exists")
-    
     db_tag = Tag(name=tag.name, color=tag.color)
     db.add(db_tag)
     db.commit()
@@ -167,7 +205,6 @@ def update_tag(tag_id: int, tag: TagSchema, db: Session = Depends(get_db)):
     db_tag = db.query(Tag).filter(Tag.id == tag_id).first()
     if not db_tag:
         raise HTTPException(status_code=404, detail="Tag not found")
-    
     db_tag.name = tag.name
     db_tag.color = tag.color
     db.commit()
@@ -179,7 +216,6 @@ def delete_tag(tag_id: int, db: Session = Depends(get_db)):
     db_tag = db.query(Tag).filter(Tag.id == tag_id).first()
     if not db_tag:
         raise HTTPException(status_code=404, detail="Tag not found")
-    
     db.delete(db_tag)
     db.commit()
     return {"status": "success"}
@@ -187,17 +223,12 @@ def delete_tag(tag_id: int, db: Session = Depends(get_db)):
 @app.post("/api/upload")
 async def upload_images(files: List[UploadFile] = File(...), db: Session = Depends(get_db)):
     uploaded = []
-    
     for file in files:
-        # Save file
         filename = f"{datetime.utcnow().timestamp()}_{file.filename}"
         filepath = UPLOAD_DIR / filename
-        
         with open(filepath, "wb") as f:
             content = await file.read()
             f.write(content)
-        
-        # Create database entry
         db_image = Image(
             filename=filename,
             original_filename=file.filename,
@@ -206,9 +237,7 @@ async def upload_images(files: List[UploadFile] = File(...), db: Session = Depen
         db.add(db_image)
         db.commit()
         db.refresh(db_image)
-        
         uploaded.append(ImageSchema.from_orm(db_image))
-    
     return uploaded
 
 @app.get("/api/images/{image_id}/download")
@@ -216,7 +245,6 @@ def download_image(image_id: int, db: Session = Depends(get_db)):
     image = db.query(Image).filter(Image.id == image_id).first()
     if not image:
         raise HTTPException(status_code=404, detail="Image not found")
-    
     return FileResponse(
         image.path,
         filename=image.original_filename,
@@ -229,14 +257,12 @@ def batch_tag_images(image_ids: List[int], tag_id: int, db: Session = Depends(ge
     tag = db.query(Tag).filter(Tag.id == tag_id).first()
     if not tag:
         raise HTTPException(status_code=404, detail="Tag not found")
-    
     count = 0
     for image_id in image_ids:
         image = db.query(Image).filter(Image.id == image_id).first()
         if image and tag not in image.tags:
             image.tags.append(tag)
             count += 1
-    
     db.commit()
     return {"tagged": count}
 
@@ -246,16 +272,20 @@ def batch_untag_images(image_ids: List[int], tag_id: int, db: Session = Depends(
     tag = db.query(Tag).filter(Tag.id == tag_id).first()
     if not tag:
         raise HTTPException(status_code=404, detail="Tag not found")
-    
     count = 0
     for image_id in image_ids:
         image = db.query(Image).filter(Image.id == image_id).first()
         if image and tag in image.tags:
             image.tags.remove(tag)
             count += 1
-    
     db.commit()
     return {"untagged": count}
+
+@app.post("/api/rescan")
+def rescan_uploads(db: Session = Depends(get_db)):
+    """Rescan uploads directory and register new files"""
+    added = scan_and_register_files(db)
+    return {"added": added, "message": f"Registered {added} new image files"}
 
 @app.get("/health")
 def health():
