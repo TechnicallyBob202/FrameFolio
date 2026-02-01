@@ -28,16 +28,16 @@ image_tags = Table(
 class Folder(Base):
     __tablename__ = "folders"
     id = Column(Integer, primary_key=True)
-    path = Column(String(512), unique=True)  # ADD LENGTH
+    path = Column(String(512), unique=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     images = relationship("Image", back_populates="folder", cascade="all, delete-orphan")
 
 class Image(Base):
     __tablename__ = "images"
     id = Column(Integer, primary_key=True)
-    filename = Column(String(255), unique=True)  # ADD LENGTH
-    original_filename = Column(String(255))  # ADD LENGTH
-    path = Column(String(512))  # ADD LENGTH
+    filename = Column(String(255), unique=True)
+    original_filename = Column(String(255))
+    path = Column(String(512))
     folder_id = Column(Integer, ForeignKey('folders.id'), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     folder = relationship("Folder", back_populates="images")
@@ -46,12 +46,12 @@ class Image(Base):
 class Tag(Base):
     __tablename__ = "tags"
     id = Column(Integer, primary_key=True)
-    name = Column(String(255), unique=True)  # ADD LENGTH
-    color = Column(String(7), default="#6366f1")  # ADD LENGTH (hex color)
+    name = Column(String(255), unique=True)
+    color = Column(String(7), default="#6366f1")
     parent_id = Column(Integer, ForeignKey('tags.id'), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     images = relationship("Image", secondary=image_tags, back_populates="tags")
-    children = relationship("Tag", remote_side=[id], cascade="all, delete-orphan")
+    children = relationship("Tag", remote_side=[id], cascade="all, delete-orphan", single_parent=True)
     parent = relationship("Tag", remote_side=[parent_id], foreign_keys=[parent_id])
 
 # Create tables
