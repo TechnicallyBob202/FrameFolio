@@ -28,16 +28,16 @@ image_tags = Table(
 class Folder(Base):
     __tablename__ = "folders"
     id = Column(Integer, primary_key=True)
-    path = Column(String, unique=True)
+    path = Column(String(512), unique=True)  # ADD LENGTH
     created_at = Column(DateTime, default=datetime.utcnow)
     images = relationship("Image", back_populates="folder", cascade="all, delete-orphan")
 
 class Image(Base):
     __tablename__ = "images"
     id = Column(Integer, primary_key=True)
-    filename = Column(String, unique=True)
-    original_filename = Column(String)
-    path = Column(String)
+    filename = Column(String(255), unique=True)  # ADD LENGTH
+    original_filename = Column(String(255))  # ADD LENGTH
+    path = Column(String(512))  # ADD LENGTH
     folder_id = Column(Integer, ForeignKey('folders.id'), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     folder = relationship("Folder", back_populates="images")
@@ -46,8 +46,8 @@ class Image(Base):
 class Tag(Base):
     __tablename__ = "tags"
     id = Column(Integer, primary_key=True)
-    name = Column(String, unique=True)
-    color = Column(String, default="#6366f1")
+    name = Column(String(255), unique=True)  # ADD LENGTH
+    color = Column(String(7), default="#6366f1")  # ADD LENGTH (hex color)
     parent_id = Column(Integer, ForeignKey('tags.id'), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     images = relationship("Image", secondary=image_tags, back_populates="tags")
