@@ -9,6 +9,7 @@ from typing import List, Optional
 from datetime import datetime
 from pathlib import Path
 import os
+import asyncio
 
 # Database setup
 DATABASE_URL = os.getenv('DATABASE_URL', 'mysql+pymysql://root:frametagger@mariadb:3306/frametagger')
@@ -52,7 +53,7 @@ class Tag(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     images = relationship("Image", secondary=image_tags, back_populates="tags")
     children = relationship("Tag", remote_side=[id], cascade="all, delete-orphan", single_parent=True)
-    parent = relationship("Tag", remote_side=[parent_id], foreign_keys=[parent_id])
+    parent = relationship("Tag", remote_side=[parent_id], foreign_keys=[parent_id], overlaps="children")
 
 # Create tables
 Base.metadata.create_all(bind=engine)
@@ -166,6 +167,24 @@ def scan_folder(folder_path: str, folder_id: int, db: Session):
 @app.on_event("startup")
 async def startup_event():
     """Scan all configured folders on startup"""
+    # Wait for database to be ready
+    max_retries = 10
+    for i in range(max_retries):
+        try:
+            db = SessionLocal()
+            db.execute("SELECT 1")
+            db.close()
+            print("[Startup] Database is ready")
+            break
+        except Exception as e:
+            if i < max_retries - 1:
+                print(f"[Startup] Waiting for database... (attempt {i+1}/{max_retries})")
+                await asyncio.sleep(1)
+            else:
+                print(f"[Startup] Database connection failed after {max_retries} attempts")
+                raise
+    
+    # Scan folders
     db = SessionLocal()
     try:
         folders = db.query(Folder).all()
