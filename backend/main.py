@@ -8,10 +8,11 @@ from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime
 from pathlib import Path
+import os
 
 # Database setup
-DATABASE_URL = "sqlite:///./imagetagger.db"
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+DATABASE_URL = os.getenv('DATABASE_URL', 'mysql+pymysql://root:frametagger@mariadb:3306/frametagger')
+engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_size=10, max_overflow=20)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 

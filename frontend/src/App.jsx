@@ -3,6 +3,95 @@ import './App.css';
 
 const API_URL = 'http://localhost:8003/api';
 
+// Folder Browser Component
+const FolderBrowser = ({ onSelectFolder, onBack }) => {
+  const [currentPath, setCurrentPath] = useState('/mnt');
+  const [folders, setFolders] = useState([]);
+  const [parentPath, setParentPath] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  const browseFolders = useCallback(async (path) => {
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_URL}/browse-folders?path=${encodeURIComponent(path)}`);
+      if (response.ok) {
+        const data = await response.json();
+        setCurrentPath(data.current_path);
+        setFolders(data.folders);
+        setParentPath(data.parent_path);
+      }
+    } catch (error) {
+      console.error('Failed to browse folders:', error);
+    }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    browseFolders(currentPath);
+  }, [currentPath, browseFolders]);
+
+  const goUp = () => {
+    if (parentPath) setCurrentPath(parentPath);
+  };
+
+  return (
+    <div className="folder-browser">
+      <div className="browser-header">
+        <button className="back-btn" onClick={onBack}>← Back</button>
+        <div className="current-path">{currentPath}</div>
+      </div>
+
+      {loading ? (
+        <div className="browser-loading">Loading...</div>
+      ) : (
+        <>
+          <div className="folders-browser-list">
+            {folders.length === 0 ? (
+              <p className="no-folders">No folders found</p>
+            ) : (
+              folders.map((folder) => (
+                <div key={folder.path} className="browser-folder-item">
+                  <button 
+                    className="folder-btn"
+                    onClick={() => setCurrentPath(folder.path)}
+                    title="Double-click or click folder name to navigate"
+                  >
+                    📁 {folder.name}
+                  </button>
+                  <button
+                    className="select-folder-btn"
+                    onClick={() => onSelectFolder(folder.path)}
+                    title="Add this folder"
+                  >
+                    Add
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+
+          <div className="browser-controls">
+            <button
+              className="up-btn"
+              onClick={goUp}
+              disabled={!parentPath}
+              title="Go to parent folder"
+            >
+              ↑ Parent
+            </button>
+            <button
+              className="select-current-btn"
+              onClick={() => onSelectFolder(currentPath)}
+            >
+              Add Current Folder
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
 // Tag Preview Dialog
 const TagPreviewDialog = ({ tags, selectedParent, onConfirm, onCancel }) => {
   return (
@@ -49,42 +138,17 @@ const SettingsDrawer = ({
   onThemeChange 
 }) => {
   const [activeTab, setActiveTab] = useState('folders');
+  const [showFolderBrowser, setShowFolderBrowser] = useState(false);
   const [tagInput, setTagInput] = useState('');
   const [selectedParent, setSelectedParent] = useState(null);
   const [editingTag, setEditingTag] = useState(null);
   const [editTagName, setEditTagName] = useState('');
   const [editTagColor, setEditTagColor] = useState('');
   const [previewTags, setPreviewTags] = useState(null);
-  const [isPickingDir, setIsPickingDir] = useState(false);
 
-  const handlePickDirectory = async () => {
-    if (!('showDirectoryPicker' in window)) {
-      alert('Directory picker not supported in your browser. Please use Chrome, Edge, or Firefox.');
-      return;
-    }
-
-    try {
-      setIsPickingDir(true);
-      const dirHandle = await window.showDirectoryPicker();
-      const path = dirHandle.name;
-      
-      // Get the full path - this is a limitation of showDirectoryPicker
-      // We only get the folder name, so we'll need to let user confirm
-      alert(`Selected folder: ${path}\n\nNote: Full path access requires backend integration. Use browse-folders endpoint for full path.`);
-      
-      // For now, we'll ask user to confirm the path
-      const fullPath = prompt(`Folder name: ${path}\n\nEnter full path to add:`, path);
-      if (fullPath) {
-        await onFolderAdd(fullPath);
-      }
-    } catch (error) {
-      if (error.name !== 'AbortError') {
-        console.error('Directory picker error:', error);
-        alert('Error selecting directory');
-      }
-    } finally {
-      setIsPickingDir(false);
-    }
+  const handleSelectFolder = async (path) => {
+    await onFolderAdd(path);
+    setShowFolderBrowser(false);
   };
 
   const handleAddTags = () => {
@@ -117,10 +181,6 @@ const SettingsDrawer = ({
     await onTagUpdate(editingTag, editTagName, editTagColor);
     setEditingTag(null);
   };
-
-  // Build flat list for dropdowns
-  const allTags = tags.flatMap(tag => [tag, ...(tag.children || [])]);
-  const topLevelTags = tags;
 
   const renderTagHierarchy = (tagList, depth = 0) => {
     return tagList.map((tag) => (
@@ -159,6 +219,8 @@ const SettingsDrawer = ({
     ));
   };
 
+  const topLevelTags = tags;
+
   return (
     <>
       <div className={`drawer-overlay ${isOpen ? 'open' : ''}`} onClick={onClose}></div>
@@ -173,7 +235,7 @@ const SettingsDrawer = ({
           <div className="drawer-nav">
             <button 
               className={`nav-btn ${activeTab === 'folders' ? 'active' : ''}`}
-              onClick={() => setActiveTab('folders')}
+              onClick={() => { setActiveTab('folders'); setShowFolderBrowser(false); }}
             >
               📁 Folders
             </button>
@@ -192,16 +254,12 @@ const SettingsDrawer = ({
           </div>
 
           <div className="drawer-content">
-            {activeTab === 'folders' && (
+            {activeTab === 'folders' && !showFolderBrowser && (
               <div className="drawer-section">
                 <h3>Scan Folders</h3>
                 
-                <button 
-                  className="add-folder-browser-btn" 
-                  onClick={handlePickDirectory}
-                  disabled={isPickingDir}
-                >
-                  {isPickingDir ? '⏳ Selecting...' : '📂 Pick Folder'}
+                <button className="add-folder-browser-btn" onClick={() => setShowFolderBrowser(true)}>
+                  📂 Browse and Add Folder
                 </button>
 
                 <div className="folders-list">
@@ -230,6 +288,13 @@ const SettingsDrawer = ({
                   🔄 Rescan All Folders
                 </button>
               </div>
+            )}
+
+            {activeTab === 'folders' && showFolderBrowser && (
+              <FolderBrowser 
+                onSelectFolder={handleSelectFolder}
+                onBack={() => setShowFolderBrowser(false)}
+              />
             )}
 
             {activeTab === 'theme' && (
@@ -418,7 +483,6 @@ const BatchTagger = ({ tags, onApply, selectedCount, selectedImages }) => {
   const [selectedTag, setSelectedTag] = useState(null);
   const [action, setAction] = useState('add');
 
-  // Flatten tags for dropdown
   const flatTags = tags.flatMap(tag => {
     const result = [tag];
     if (tag.children) {
@@ -568,7 +632,6 @@ export default function App() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [theme, setTheme] = useState(localStorage.getItem('frametagger-theme') || 'auto');
 
-  // Apply theme
   useEffect(() => {
     let appliedTheme = theme;
     if (theme === 'auto') {
@@ -578,7 +641,6 @@ export default function App() {
     localStorage.setItem('frametagger-theme', theme);
   }, [theme]);
 
-  // Fetch data
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
