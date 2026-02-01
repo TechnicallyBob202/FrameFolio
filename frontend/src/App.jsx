@@ -3,103 +3,22 @@ import './App.css';
 
 const API_URL = 'http://localhost:8003/api';
 
-// Folder Browser Component
-const FolderBrowser = ({ onSelectFolder, startPath = "/mnt/media" }) => {
-  const [currentPath, setCurrentPath] = useState(startPath);
-  const [folders, setFolders] = useState([]);
-  const [parentPath, setParentPath] = useState(null);
-  const [loading, setLoading] = useState(false);
-
-  const browseFolders = useCallback(async (path) => {
-    setLoading(true);
-    try {
-      const response = await fetch(`${API_URL}/browse-folders?path=${encodeURIComponent(path)}`);
-      if (response.ok) {
-        const data = await response.json();
-        setCurrentPath(data.current_path);
-        setFolders(data.folders);
-        setParentPath(data.parent_path);
-      }
-    } catch (error) {
-      console.error('Failed to browse folders:', error);
-    }
-    setLoading(false);
-  }, []);
-
-  useEffect(() => {
-    browseFolders(currentPath);
-  }, [currentPath, browseFolders]);
-
-  const goUp = () => {
-    if (parentPath) setCurrentPath(parentPath);
-  };
-
-  return (
-    <div className="folder-browser">
-      <div className="browser-header">
-        <button 
-          className="up-btn" 
-          onClick={goUp}
-          disabled={!parentPath}
-          title="Go to parent folder"
-        >
-          ↑
-        </button>
-        <div className="current-path">{currentPath}</div>
-      </div>
-
-      {loading ? (
-        <div className="browser-loading">Loading...</div>
-      ) : (
-        <div className="folders-browser-list">
-          {folders.length === 0 ? (
-            <p className="no-folders">No folders found</p>
-          ) : (
-            folders.map((folder) => (
-              <div key={folder.path} className="browser-folder-item">
-                <button 
-                  className="folder-btn"
-                  onClick={() => setCurrentPath(folder.path)}
-                  title="Double-click or click to navigate"
-                >
-                  📁 {folder.name}
-                </button>
-                <button
-                  className="select-folder-btn"
-                  onClick={() => onSelectFolder(folder.path)}
-                  title="Add this folder"
-                >
-                  Add
-                </button>
-              </div>
-            ))
-          )}
-        </div>
-      )}
-
-      <div className="browser-footer">
-        <button
-          className="select-current-btn"
-          onClick={() => onSelectFolder(currentPath)}
-        >
-          Add Current Folder
-        </button>
-      </div>
-    </div>
-  );
-};
-
 // Tag Preview Dialog
-const TagPreviewDialog = ({ tags, onConfirm, onCancel }) => {
+const TagPreviewDialog = ({ tags, selectedParent, onConfirm, onCancel }) => {
   return (
     <div className="modal-overlay" onClick={onCancel}>
       <div className="preview-dialog" onClick={(e) => e.stopPropagation()}>
         <h3>Create Tags</h3>
         <p className="preview-subtitle">You're about to create {tags.length} tag(s):</p>
         
+        {selectedParent && (
+          <p className="preview-parent">Under parent: <strong>{selectedParent.name}</strong></p>
+        )}
+        
         <div className="tags-preview-list">
           {tags.map((tag, idx) => (
             <div key={idx} className="preview-tag">
+              {selectedParent && <span className="preview-breadcrumb">{selectedParent.name} / </span>}
               {tag}
             </div>
           ))}
@@ -130,12 +49,43 @@ const SettingsDrawer = ({
   onThemeChange 
 }) => {
   const [activeTab, setActiveTab] = useState('folders');
-  const [showFolderBrowser, setShowFolderBrowser] = useState(false);
   const [tagInput, setTagInput] = useState('');
+  const [selectedParent, setSelectedParent] = useState(null);
   const [editingTag, setEditingTag] = useState(null);
   const [editTagName, setEditTagName] = useState('');
   const [editTagColor, setEditTagColor] = useState('');
   const [previewTags, setPreviewTags] = useState(null);
+  const [isPickingDir, setIsPickingDir] = useState(false);
+
+  const handlePickDirectory = async () => {
+    if (!('showDirectoryPicker' in window)) {
+      alert('Directory picker not supported in your browser. Please use Chrome, Edge, or Firefox.');
+      return;
+    }
+
+    try {
+      setIsPickingDir(true);
+      const dirHandle = await window.showDirectoryPicker();
+      const path = dirHandle.name;
+      
+      // Get the full path - this is a limitation of showDirectoryPicker
+      // We only get the folder name, so we'll need to let user confirm
+      alert(`Selected folder: ${path}\n\nNote: Full path access requires backend integration. Use browse-folders endpoint for full path.`);
+      
+      // For now, we'll ask user to confirm the path
+      const fullPath = prompt(`Folder name: ${path}\n\nEnter full path to add:`, path);
+      if (fullPath) {
+        await onFolderAdd(fullPath);
+      }
+    } catch (error) {
+      if (error.name !== 'AbortError') {
+        console.error('Directory picker error:', error);
+        alert('Error selecting directory');
+      }
+    } finally {
+      setIsPickingDir(false);
+    }
+  };
 
   const handleAddTags = () => {
     const tagNames = tagInput
@@ -150,9 +100,10 @@ const SettingsDrawer = ({
 
   const confirmCreateTags = async () => {
     for (const tagName of previewTags) {
-      await onTagCreate(tagName);
+      await onTagCreate(tagName, selectedParent?.id);
     }
     setTagInput('');
+    setSelectedParent(null);
     setPreviewTags(null);
   };
 
@@ -167,9 +118,45 @@ const SettingsDrawer = ({
     setEditingTag(null);
   };
 
-  const handleSelectFolder = async (path) => {
-    await onFolderAdd(path);
-    setShowFolderBrowser(false);
+  // Build flat list for dropdowns
+  const allTags = tags.flatMap(tag => [tag, ...(tag.children || [])]);
+  const topLevelTags = tags;
+
+  const renderTagHierarchy = (tagList, depth = 0) => {
+    return tagList.map((tag) => (
+      <div key={tag.id} className="tag-item" style={{ paddingLeft: `${depth * 1.5}rem` }}>
+        {editingTag === tag.id ? (
+          <div className="tag-edit">
+            <input
+              type="text"
+              value={editTagName}
+              onChange={(e) => setEditTagName(e.target.value)}
+              className="tag-name-input"
+            />
+            <input
+              type="color"
+              value={editTagColor}
+              onChange={(e) => setEditTagColor(e.target.value)}
+              className="tag-color-input"
+            />
+            <button className="save-btn" onClick={handleSaveTag}>Save</button>
+            <button className="cancel-btn" onClick={() => setEditingTag(null)}>Cancel</button>
+          </div>
+        ) : (
+          <div className="tag-display">
+            <span className="tag-name">{tag.name}</span>
+            <div className="tag-color-preview" style={{ backgroundColor: tag.color }}></div>
+            <button className="edit-btn" onClick={() => handleEditTag(tag)}>Edit</button>
+            <button className="delete-btn" onClick={() => onTagDelete(tag.id)}>Delete</button>
+          </div>
+        )}
+        {tag.children && tag.children.length > 0 && (
+          <div className="tag-children">
+            {renderTagHierarchy(tag.children, depth + 1)}
+          </div>
+        )}
+      </div>
+    ));
   };
 
   return (
@@ -186,7 +173,7 @@ const SettingsDrawer = ({
           <div className="drawer-nav">
             <button 
               className={`nav-btn ${activeTab === 'folders' ? 'active' : ''}`}
-              onClick={() => { setActiveTab('folders'); setShowFolderBrowser(false); }}
+              onClick={() => setActiveTab('folders')}
             >
               📁 Folders
             </button>
@@ -205,12 +192,16 @@ const SettingsDrawer = ({
           </div>
 
           <div className="drawer-content">
-            {activeTab === 'folders' && !showFolderBrowser && (
+            {activeTab === 'folders' && (
               <div className="drawer-section">
                 <h3>Scan Folders</h3>
                 
-                <button className="add-folder-browser-btn" onClick={() => setShowFolderBrowser(true)}>
-                  + Browse and Add Folder
+                <button 
+                  className="add-folder-browser-btn" 
+                  onClick={handlePickDirectory}
+                  disabled={isPickingDir}
+                >
+                  {isPickingDir ? '⏳ Selecting...' : '📂 Pick Folder'}
                 </button>
 
                 <div className="folders-list">
@@ -239,10 +230,6 @@ const SettingsDrawer = ({
                   🔄 Rescan All Folders
                 </button>
               </div>
-            )}
-
-            {activeTab === 'folders' && showFolderBrowser && (
-              <FolderBrowser onSelectFolder={handleSelectFolder} />
             )}
 
             {activeTab === 'theme' && (
@@ -290,13 +277,35 @@ const SettingsDrawer = ({
                 <div className="tag-creation">
                   <input
                     type="text"
-                    placeholder="Create tags: Monet, Winter, Landscape"
+                    placeholder="Create tags: Portrait, Landscape, Monet"
                     value={tagInput}
                     onChange={(e) => setTagInput(e.target.value)}
                     className="tag-input"
                   />
+                  
+                  <div className="parent-select-wrapper">
+                    <label>Parent tag (optional):</label>
+                    <select 
+                      value={selectedParent?.id || ''}
+                      onChange={(e) => {
+                        const tag = topLevelTags.find(t => t.id === parseInt(e.target.value));
+                        setSelectedParent(tag || null);
+                      }}
+                      className="parent-select"
+                    >
+                      <option value="">None (Top-level)</option>
+                      {topLevelTags.map(tag => (
+                        <option key={tag.id} value={tag.id}>{tag.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
                   <p className="tag-help-text">💡 Separate multiple tags with commas</p>
-                  <button className="create-tags-btn" onClick={handleAddTags} disabled={!tagInput.trim()}>
+                  <button 
+                    className="create-tags-btn" 
+                    onClick={handleAddTags} 
+                    disabled={!tagInput.trim()}
+                  >
                     + Add Tags
                   </button>
                 </div>
@@ -305,35 +314,7 @@ const SettingsDrawer = ({
                   {tags.length === 0 ? (
                     <p className="empty-state">No tags yet</p>
                   ) : (
-                    tags.map((tag) => (
-                      <div key={tag.id} className="tag-item">
-                        {editingTag === tag.id ? (
-                          <div className="tag-edit">
-                            <input
-                              type="text"
-                              value={editTagName}
-                              onChange={(e) => setEditTagName(e.target.value)}
-                              className="tag-name-input"
-                            />
-                            <input
-                              type="color"
-                              value={editTagColor}
-                              onChange={(e) => setEditTagColor(e.target.value)}
-                              className="tag-color-input"
-                            />
-                            <button className="save-btn" onClick={handleSaveTag}>Save</button>
-                            <button className="cancel-btn" onClick={() => setEditingTag(null)}>Cancel</button>
-                          </div>
-                        ) : (
-                          <div className="tag-display">
-                            <span className="tag-name">{tag.name}</span>
-                            <div className="tag-color-preview" style={{ backgroundColor: tag.color }}></div>
-                            <button className="edit-btn" onClick={() => handleEditTag(tag)}>Edit</button>
-                            <button className="delete-btn" onClick={() => onTagDelete(tag.id)}>Delete</button>
-                          </div>
-                        )}
-                      </div>
-                    ))
+                    renderTagHierarchy(tags)
                   )}
                 </div>
               </div>
@@ -345,6 +326,7 @@ const SettingsDrawer = ({
       {previewTags && (
         <TagPreviewDialog 
           tags={previewTags}
+          selectedParent={selectedParent}
           onConfirm={confirmCreateTags}
           onCancel={() => setPreviewTags(null)}
         />
@@ -397,23 +379,35 @@ const ImageGrid = ({ images, selectedImages, onSelect, onImageClick }) => {
 
 // Tag Filter Component
 const TagFilter = ({ tags, selectedTags, onTagToggle }) => {
+  const renderTagTree = (tagList, depth = 0) => {
+    return tagList.map((tag) => (
+      <div key={tag.id} style={{ paddingLeft: `${depth * 1}rem` }}>
+        <button
+          className={`filter-tag ${selectedTags.includes(tag.id) ? 'active' : ''}`}
+          style={{
+            borderColor: tag.color,
+            backgroundColor: selectedTags.includes(tag.id) ? tag.color : 'transparent',
+          }}
+          onClick={() => onTagToggle(tag.id)}
+        >
+          {tag.name}
+        </button>
+        {tag.children && tag.children.length > 0 && (
+          <div>{renderTagTree(tag.children, depth + 1)}</div>
+        )}
+      </div>
+    ));
+  };
+
   return (
     <div className="tag-filter">
       <h3>Filter by Tags</h3>
       <div className="tag-list">
-        {tags.map((tag) => (
-          <button
-            key={tag.id}
-            className={`filter-tag ${selectedTags.includes(tag.id) ? 'active' : ''}`}
-            style={{
-              borderColor: tag.color,
-              backgroundColor: selectedTags.includes(tag.id) ? tag.color : 'transparent',
-            }}
-            onClick={() => onTagToggle(tag.id)}
-          >
-            {tag.name}
-          </button>
-        ))}
+        {tags.length === 0 ? (
+          <p className="no-tags">No tags yet</p>
+        ) : (
+          renderTagTree(tags)
+        )}
       </div>
     </div>
   );
@@ -421,8 +415,17 @@ const TagFilter = ({ tags, selectedTags, onTagToggle }) => {
 
 // Batch Tagger Component
 const BatchTagger = ({ tags, onApply, selectedCount, selectedImages }) => {
-  const [selectedTag, setSelectedTag] = useState(tags[0]?.id || null);
+  const [selectedTag, setSelectedTag] = useState(null);
   const [action, setAction] = useState('add');
+
+  // Flatten tags for dropdown
+  const flatTags = tags.flatMap(tag => {
+    const result = [tag];
+    if (tag.children) {
+      result.push(...tag.children);
+    }
+    return result;
+  });
 
   const handleApply = async () => {
     if (!selectedTag) return;
@@ -462,7 +465,7 @@ const BatchTagger = ({ tags, onApply, selectedCount, selectedImages }) => {
           className="tag-select"
         >
           <option value="">Select a tag...</option>
-          {tags.map((tag) => (
+          {flatTags.map((tag) => (
             <option key={tag.id} value={tag.id}>
               {tag.name}
             </option>
@@ -496,6 +499,14 @@ const BatchTagger = ({ tags, onApply, selectedCount, selectedImages }) => {
 const ImageModal = ({ image, tags, onClose, onTagToggle, onDownload }) => {
   if (!image) return null;
 
+  const flatTags = tags.flatMap(tag => {
+    const result = [tag];
+    if (tag.children) {
+      result.push(...tag.children);
+    }
+    return result;
+  });
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content" onClick={(e) => e.stopPropagation()}>
@@ -515,7 +526,7 @@ const ImageModal = ({ image, tags, onClose, onTagToggle, onDownload }) => {
             <div className="modal-tags">
               <h3>Tags</h3>
               <div className="tags-grid">
-                {tags.map((tag) => {
+                {flatTags.map((tag) => {
                   const isTagged = image.tags.some((t) => t.id === tag.id);
                   return (
                     <button
@@ -679,12 +690,12 @@ export default function App() {
     }
   };
 
-  const handleCreateTag = async (tagName) => {
+  const handleCreateTag = async (tagName, parentId) => {
     try {
       const response = await fetch(`${API_URL}/tags`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: tagName, color: '#6366f1' }),
+        body: JSON.stringify({ name: tagName, color: '#6366f1', parent_id: parentId }),
       });
 
       if (response.ok) {
@@ -712,7 +723,7 @@ export default function App() {
   };
 
   const handleDeleteTag = async (tagId) => {
-    if (window.confirm('Delete this tag?')) {
+    if (window.confirm('Delete this tag and all its children?')) {
       try {
         const response = await fetch(`${API_URL}/tags/${tagId}`, {
           method: 'DELETE',

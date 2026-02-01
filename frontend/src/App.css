@@ -1201,3 +1201,65 @@ html, body, #root {
     grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   }
 }
+
+/* Parent Select */
+.parent-select-wrapper {
+  margin: 1rem 0;
+}
+
+.parent-select-wrapper label {
+  display: block;
+  font-size: 0.9rem;
+  font-weight: 500;
+  margin-bottom: 0.5rem;
+  color: var(--text-primary);
+}
+
+.parent-select {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  font-family: inherit;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 0.9rem;
+}
+
+.parent-select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* Tag Children Hierarchy */
+.tag-children {
+  margin-top: 0.5rem;
+  border-left: 2px solid var(--border);
+  padding-left: 0.75rem;
+  margin-left: 0.5rem;
+}
+
+/* Preview Dialog - Parent Info */
+.preview-parent {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  margin-bottom: 1rem;
+  padding: 0.75rem;
+  background: var(--bg-primary);
+  border-radius: 0.375rem;
+  border-left: 3px solid var(--accent);
+}
+
+.preview-breadcrumb {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+/* No Tags State */
+.no-tags {
+  padding: 1rem;
+  text-align: center;
+  color: var(--text-secondary);
+  font-style: italic;
+  font-size: 0.9rem;
+}

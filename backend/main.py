@@ -7,7 +7,6 @@ from sqlalchemy.orm import sessionmaker, Session, relationship
 from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime
-import os
 from pathlib import Path
 
 # Database setup
@@ -48,7 +47,11 @@ class Tag(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String, unique=True)
     color = Column(String, default="#6366f1")
+    parent_id = Column(Integer, ForeignKey('tags.id'), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
     images = relationship("Image", secondary=image_tags, back_populates="tags")
+    children = relationship("Tag", remote_side=[id], cascade="all, delete-orphan")
+    parent = relationship("Tag", remote_side=[parent_id], foreign_keys=[parent_id])
 
 # Create tables
 Base.metadata.create_all(bind=engine)
@@ -65,8 +68,21 @@ class TagSchema(BaseModel):
     id: Optional[int] = None
     name: str
     color: str = "#6366f1"
+    parent_id: Optional[int] = None
+    created_at: Optional[datetime] = None
     class Config:
         from_attributes = True
+
+class TagWithChildrenSchema(BaseModel):
+    id: int
+    name: str
+    color: str
+    parent_id: Optional[int] = None
+    children: List['TagWithChildrenSchema'] = []
+    class Config:
+        from_attributes = True
+
+TagWithChildrenSchema.update_forward_refs()
 
 class ImageSchema(BaseModel):
     id: Optional[int] = None
@@ -98,7 +114,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Create default uploads directory
 UPLOAD_DIR = Path("./uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
 
@@ -236,8 +251,14 @@ def remove_tag_from_image(image_id: int, tag_id: int, db: Session = Depends(get_
     return {"status": "success"}
 
 # Tag endpoints
-@app.get("/api/tags", response_model=List[TagSchema])
+@app.get("/api/tags", response_model=List[TagWithChildrenSchema])
 def get_tags(db: Session = Depends(get_db)):
+    # Return only top-level tags (no parent)
+    return db.query(Tag).filter(Tag.parent_id == None).all()
+
+@app.get("/api/tags/flat")
+def get_all_tags_flat(db: Session = Depends(get_db)):
+    """Get all tags in flat list (for dropdowns, filtering)"""
     return db.query(Tag).all()
 
 @app.post("/api/tags", response_model=TagSchema)
@@ -245,7 +266,14 @@ def create_tag(tag: TagSchema, db: Session = Depends(get_db)):
     existing = db.query(Tag).filter(Tag.name == tag.name).first()
     if existing:
         raise HTTPException(status_code=400, detail="Tag already exists")
-    db_tag = Tag(name=tag.name, color=tag.color)
+    
+    # If parent_id provided, verify it exists
+    if tag.parent_id:
+        parent = db.query(Tag).filter(Tag.id == tag.parent_id).first()
+        if not parent:
+            raise HTTPException(status_code=400, detail="Parent tag not found")
+    
+    db_tag = Tag(name=tag.name, color=tag.color, parent_id=tag.parent_id)
     db.add(db_tag)
     db.commit()
     db.refresh(db_tag)
@@ -256,8 +284,14 @@ def update_tag(tag_id: int, tag: TagSchema, db: Session = Depends(get_db)):
     db_tag = db.query(Tag).filter(Tag.id == tag_id).first()
     if not db_tag:
         raise HTTPException(status_code=404, detail="Tag not found")
+    
+    # Prevent tag from being its own parent
+    if tag.parent_id == tag_id:
+        raise HTTPException(status_code=400, detail="Tag cannot be its own parent")
+    
     db_tag.name = tag.name
     db_tag.color = tag.color
+    db_tag.parent_id = tag.parent_id
     db.commit()
     db.refresh(db_tag)
     return db_tag
@@ -267,10 +301,12 @@ def delete_tag(tag_id: int, db: Session = Depends(get_db)):
     db_tag = db.query(Tag).filter(Tag.id == tag_id).first()
     if not db_tag:
         raise HTTPException(status_code=404, detail="Tag not found")
+    
     db.delete(db_tag)
     db.commit()
     return {"status": "success"}
 
+# Upload endpoint
 @app.post("/api/upload")
 async def upload_images(files: List[UploadFile] = File(...), db: Session = Depends(get_db)):
     uploaded = []
@@ -289,6 +325,7 @@ async def upload_images(files: List[UploadFile] = File(...), db: Session = Depen
         db.commit()
         db.refresh(db_image)
         uploaded.append(ImageSchema.from_orm(db_image))
+    
     return uploaded
 
 @app.get("/api/images/{image_id}/download")
@@ -302,6 +339,7 @@ def download_image(image_id: int, db: Session = Depends(get_db)):
         media_type="image/jpeg"
     )
 
+# Batch operations
 @app.post("/api/batch/tag")
 def batch_tag_images(image_ids: List[int], tag_id: int, db: Session = Depends(get_db)):
     tag = db.query(Tag).filter(Tag.id == tag_id).first()
@@ -330,6 +368,7 @@ def batch_untag_images(image_ids: List[int], tag_id: int, db: Session = Depends(
     db.commit()
     return {"untagged": count}
 
+# Rescan endpoint
 @app.post("/api/rescan")
 def rescan_all_folders(db: Session = Depends(get_db)):
     folders = db.query(Folder).all()
@@ -345,28 +384,3 @@ def health():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
-
-@app.get("/api/browse-folders")
-def browse_folders(path: str = "/mnt", db: Session = Depends(get_db)):
-    """List folders in a given directory"""
-    try:
-        folder_path = Path(path)
-        if not folder_path.exists():
-            raise HTTPException(status_code=404, detail="Path does not exist")
-        
-        folders = []
-        for item in sorted(folder_path.iterdir()):
-            if item.is_dir() and not item.name.startswith('.'):
-                folders.append({
-                    "name": item.name,
-                    "path": str(item),
-                    "is_dir": True
-                })
-        
-        return {
-            "current_path": str(folder_path),
-            "parent_path": str(folder_path.parent) if folder_path.parent != folder_path else None,
-            "folders": folders
-        }
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
