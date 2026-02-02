@@ -33,13 +33,13 @@ const FolderBrowser = ({ onSelectFolder, onBack }) => {
           setCurrentPath(data.path);
           setLoading(false);
         } else {
-          // Fallback
-          setCurrentPath('C:\\Users');
+          // Fallback to root
+          setCurrentPath('C:\\');
           setLoading(false);
         }
       } catch (err) {
         console.error('Failed to get home directory:', err);
-        setCurrentPath('C:\\Users');
+        setCurrentPath('C:\\');
         setLoading(false);
       }
     };
@@ -194,13 +194,6 @@ const FolderBrowser = ({ onSelectFolder, onBack }) => {
               )}
             </React.Fragment>
           ))}
-        </div>
-      )}
-
-      {/* Current path display */}
-      {currentPath && (
-        <div className="current-path-display">
-          <small>{currentPath}</small>
         </div>
       )}
 
