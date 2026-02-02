@@ -1,15 +1,20 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException, Depends
+from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Table, ForeignKey, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session, relationship
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List, Optional
 from datetime import datetime
 from pathlib import Path
 import os
 import asyncio
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Database setup
 DATABASE_URL = os.getenv('DATABASE_URL', 'mysql+pymysql://root:frametagger@mariadb:3306/frametagger')
@@ -104,6 +109,30 @@ class ImageListSchema(BaseModel):
     class Config:
         from_attributes = True
 
+# NEW: File browser models
+class FsItemSchema(BaseModel):
+    """Represents a file or folder in the file system"""
+    name: str
+    path: str
+    is_dir: bool
+    size: int = 0
+    modified: datetime
+    
+    class Config:
+        from_attributes = True
+
+class FsBrowseResponseSchema(BaseModel):
+    """Response for filesystem browsing"""
+    current_path: str
+    parent_path: Optional[str]
+    folders: List[FsItemSchema] = Field(default_factory=list)
+    files: List[FsItemSchema] = Field(default_factory=list)
+    total_folders: int = 0
+    total_files: int = 0
+    
+    class Config:
+        from_attributes = True
+
 # FastAPI app
 app = FastAPI(title="FrameTagger")
 
@@ -119,12 +148,150 @@ app.add_middleware(
 UPLOAD_DIR = Path("./uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
 
+# Allowed root paths (configure these based on your system)
+ALLOWED_ROOT_PATHS = [
+    Path("/mnt"),
+    Path("/media"),
+    Path("/home"),
+    Path(os.path.expanduser("~")),
+]
+
 def get_db():
     db = SessionLocal()
     try:
         yield db
     finally:
         db.close()
+
+# NEW: File system utility functions
+def validate_path(requested_path: str, allowed_roots: List[Path] = None) -> Path:
+    """
+    Validate that a requested path is safe to access.
+    Prevents directory traversal attacks.
+    """
+    if allowed_roots is None:
+        allowed_roots = ALLOWED_ROOT_PATHS
+    
+    try:
+        # Convert to absolute path
+        path = Path(requested_path).resolve()
+        
+        # Check if path is within allowed roots
+        is_allowed = False
+        for allowed_root in allowed_roots:
+            try:
+                path.relative_to(allowed_root.resolve())
+                is_allowed = True
+                break
+            except ValueError:
+                continue
+        
+        if not is_allowed:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Access to path '{requested_path}' is not allowed. Accessible paths: {', '.join(str(p) for p in allowed_roots)}"
+            )
+        
+        # Check if path is a symlink (could escape sandbox)
+        if path.is_symlink():
+            raise HTTPException(
+                status_code=403,
+                detail="Symlinks are not allowed for security reasons"
+            )
+        
+        return path
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid path: {str(e)}"
+        )
+
+async def browse_directory(path: Path, max_items: int = 1000) -> FsBrowseResponseSchema:
+    """
+    Asynchronously browse a directory.
+    Returns folders and files separately.
+    """
+    try:
+        if not path.exists():
+            raise HTTPException(
+                status_code=404,
+                detail=f"Path does not exist: {path}"
+            )
+        
+        if not path.is_dir():
+            raise HTTPException(
+                status_code=400,
+                detail=f"Path is not a directory: {path}"
+            )
+        
+        # Get parent path
+        parent_path = None
+        try:
+            parent = path.parent
+            if parent != path:  # Not at root
+                parent_path = str(parent)
+        except Exception:
+            parent_path = None
+        
+        # List directory contents
+        folders = []
+        files = []
+        
+        try:
+            items = list(path.iterdir())
+        except PermissionError:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Permission denied accessing directory: {path}"
+            )
+        
+        # Sort items: folders first, then files, alphabetically
+        items.sort(key=lambda x: (not x.is_dir(), x.name.lower()))
+        
+        for item in items[:max_items]:
+            try:
+                # Skip hidden files on Unix
+                if item.name.startswith('.'):
+                    continue
+                
+                # Skip symlinks for security
+                if item.is_symlink():
+                    continue
+                
+                stat_info = item.stat()
+                item_data = FsItemSchema(
+                    name=item.name,
+                    path=str(item),
+                    is_dir=item.is_dir(),
+                    size=stat_info.st_size,
+                    modified=datetime.fromtimestamp(stat_info.st_mtime)
+                )
+                
+                if item.is_dir():
+                    folders.append(item_data)
+                else:
+                    files.append(item_data)
+            except (PermissionError, OSError) as e:
+                logger.warning(f"Could not access {item}: {e}")
+                continue
+        
+        return FsBrowseResponseSchema(
+            current_path=str(path),
+            parent_path=parent_path,
+            folders=folders,
+            files=files,
+            total_folders=len(folders),
+            total_files=len(files)
+        )
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error browsing directory {path}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error browsing directory: {str(e)}"
+        )
 
 def scan_folder(folder_path: str, folder_id: int, db: Session):
     """Scan a folder and register images"""
@@ -197,6 +364,24 @@ async def startup_event():
     finally:
         db.close()
 
+# NEW: File system browsing endpoint
+@app.get("/api/fs/browse", response_model=FsBrowseResponseSchema)
+async def browse_files(
+    path: str = Query("/mnt", description="Path to browse"),
+    max_items: int = Query(1000, ge=1, le=5000, description="Max items to return")
+):
+    """
+    Browse a directory in the file system.
+    
+    Security notes:
+    - Only allows access to specified root paths
+    - Prevents directory traversal attacks
+    - Hides symlinks
+    - Hides hidden files
+    """
+    validated_path = validate_path(path)
+    return await browse_directory(validated_path, max_items)
+
 # Folder endpoints
 @app.get("/api/folders", response_model=List[FolderSchema])
 def get_folders(db: Session = Depends(get_db)):
@@ -204,6 +389,16 @@ def get_folders(db: Session = Depends(get_db)):
 
 @app.post("/api/folders", response_model=FolderSchema)
 def add_folder(folder: FolderSchema, db: Session = Depends(get_db)):
+    # Validate folder path
+    try:
+        validated_path = validate_path(folder.path)
+        if not validated_path.is_dir():
+            raise HTTPException(status_code=400, detail="Path is not a directory")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid path: {str(e)}")
+    
     existing = db.query(Folder).filter(Folder.path == folder.path).first()
     if existing:
         raise HTTPException(status_code=400, detail="Folder already added")

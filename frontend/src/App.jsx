@@ -1,75 +1,216 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import './App.css';
 
-const API_URL = 'http://localhost:8003/api';
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000/api';
 
-// Folder Browser Component
+// ============================================================================
+// FOLDER BROWSER COMPONENT
+// ============================================================================
+
+/**
+ * Modern, lightweight folder browser component
+ * Uses async/await for clean code
+ * Implements proper error handling and loading states
+ */
 const FolderBrowser = ({ onSelectFolder, onBack }) => {
   const [currentPath, setCurrentPath] = useState('/mnt');
   const [folders, setFolders] = useState([]);
   const [parentPath, setParentPath] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [breadcrumbs, setBreadcrumbs] = useState([]);
 
+  /**
+   * Fetch folder contents from backend
+   * Uses modern async/await pattern
+   */
   const browseFolders = useCallback(async (path) => {
     setLoading(true);
+    setError(null);
+    
     try {
-      const response = await fetch(`${API_URL}/browse-folders?path=${encodeURIComponent(path)}`);
-      if (response.ok) {
-        const data = await response.json();
-        setCurrentPath(data.current_path);
-        setFolders(data.folders);
-        setParentPath(data.parent_path);
+      // Make API call to backend
+      const response = await fetch(
+        `${API_URL}/fs/browse?path=${encodeURIComponent(path)}&max_items=1000`
+      );
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to browse folder');
       }
-    } catch (error) {
-      console.error('Failed to browse folders:', error);
+
+      const data = await response.json();
+      
+      setCurrentPath(data.current_path);
+      setFolders(data.folders);
+      setParentPath(data.parent_path);
+      
+      // Generate breadcrumbs from current path
+      generateBreadcrumbs(data.current_path);
+      
+    } catch (err) {
+      setError(err.message || 'Error browsing folder');
+      console.error('Folder browse error:', err);
+      setFolders([]);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, []);
 
+  /**
+   * Generate breadcrumb navigation from path
+   */
+  const generateBreadcrumbs = useCallback((path) => {
+    const parts = path.split('/').filter(Boolean);
+    const crumbs = [];
+    
+    // Add root
+    crumbs.push({ label: '/', path: '/' });
+    
+    // Add each path segment
+    let currentFullPath = '';
+    parts.forEach((part, idx) => {
+      currentFullPath += '/' + part;
+      crumbs.push({
+        label: part,
+        path: currentFullPath
+      });
+    });
+    
+    setBreadcrumbs(crumbs);
+  }, []);
+
+  /**
+   * Initialize on mount and when path changes
+   */
   useEffect(() => {
     browseFolders(currentPath);
   }, [currentPath, browseFolders]);
 
+  /**
+   * Navigate to parent folder
+   */
   const goUp = () => {
-    if (parentPath) setCurrentPath(parentPath);
+    if (parentPath) {
+      setCurrentPath(parentPath);
+    }
+  };
+
+  /**
+   * Navigate to folder
+   */
+  const navigateToFolder = (folderPath) => {
+    setCurrentPath(folderPath);
+  };
+
+  /**
+   * Select a folder and notify parent component
+   */
+  const selectFolder = async (folderPath) => {
+    try {
+      await onSelectFolder(folderPath);
+    } catch (err) {
+      setError(`Failed to select folder: ${err.message}`);
+    }
   };
 
   return (
     <div className="folder-browser">
+      {/* Header with back button */}
       <div className="browser-header">
-        <button className="back-btn" onClick={onBack}>← Back</button>
-        <div className="current-path">{currentPath}</div>
+        <button 
+          className="back-btn" 
+          onClick={onBack}
+          title="Go back to settings"
+        >
+          ← Back
+        </button>
       </div>
 
-      {loading ? (
-        <div className="browser-loading">Loading...</div>
-      ) : (
+      {/* Breadcrumb navigation */}
+      {breadcrumbs.length > 0 && (
+        <div className="breadcrumbs">
+          {breadcrumbs.map((crumb, idx) => (
+            <React.Fragment key={idx}>
+              <button
+                className={`breadcrumb-btn ${
+                  crumb.path === currentPath ? 'active' : ''
+                }`}
+                onClick={() => navigateToFolder(crumb.path)}
+                title={crumb.path}
+              >
+                {crumb.label}
+              </button>
+              {idx < breadcrumbs.length - 1 && (
+                <span className="breadcrumb-separator">/</span>
+              )}
+            </React.Fragment>
+          ))}
+        </div>
+      )}
+
+      {/* Current path display */}
+      <div className="current-path-display">
+        <small>{currentPath}</small>
+      </div>
+
+      {/* Error message display */}
+      {error && (
+        <div className="browser-error">
+          <p>⚠️ {error}</p>
+          <button 
+            className="retry-btn"
+            onClick={() => browseFolders(currentPath)}
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
+      {/* Loading state */}
+      {loading && (
+        <div className="browser-loading">
+          <div className="spinner"></div>
+          <p>Loading folder...</p>
+        </div>
+      )}
+
+      {/* Folder list */}
+      {!loading && (
         <>
           <div className="folders-browser-list">
             {folders.length === 0 ? (
-              <p className="no-folders">No folders found</p>
+              <p className="no-folders">
+                {error ? 'Unable to access folder' : 'No subfolders'}
+              </p>
             ) : (
               folders.map((folder) => (
-                <div key={folder.path} className="browser-folder-item">
+                <div 
+                  key={folder.path} 
+                  className="browser-folder-item"
+                  title={folder.path}
+                >
+                  <span className="folder-icon">📁</span>
                   <button 
                     className="folder-btn"
-                    onClick={() => setCurrentPath(folder.path)}
-                    title="Double-click or click folder name to navigate"
+                    onClick={() => navigateToFolder(folder.path)}
+                    title="Click to navigate into folder"
                   >
-                    📁 {folder.name}
+                    {folder.name}
                   </button>
                   <button
                     className="select-folder-btn"
-                    onClick={() => onSelectFolder(folder.path)}
-                    title="Add this folder"
+                    onClick={() => selectFolder(folder.path)}
+                    title="Select this folder"
                   >
-                    Add
+                    Select
                   </button>
                 </div>
               ))
             )}
           </div>
 
+          {/* Navigation and action buttons */}
           <div className="browser-controls">
             <button
               className="up-btn"
@@ -77,13 +218,14 @@ const FolderBrowser = ({ onSelectFolder, onBack }) => {
               disabled={!parentPath}
               title="Go to parent folder"
             >
-              ↑ Parent
+              ↑ Up
             </button>
             <button
               className="select-current-btn"
-              onClick={() => onSelectFolder(currentPath)}
+              onClick={() => selectFolder(currentPath)}
+              title="Select current folder"
             >
-              Add Current Folder
+              Select Current Folder
             </button>
           </div>
         </>
@@ -92,7 +234,10 @@ const FolderBrowser = ({ onSelectFolder, onBack }) => {
   );
 };
 
-// Tag Preview Dialog
+// ============================================================================
+// TAG PREVIEW DIALOG
+// ============================================================================
+
 const TagPreviewDialog = ({ tags, selectedParent, onConfirm, onCancel }) => {
   return (
     <div className="modal-overlay" onClick={onCancel}>
@@ -122,7 +267,10 @@ const TagPreviewDialog = ({ tags, selectedParent, onConfirm, onCancel }) => {
   );
 };
 
-// Settings Drawer Component
+// ============================================================================
+// SETTINGS DRAWER COMPONENT
+// ============================================================================
+
 const SettingsDrawer = ({ 
   isOpen, 
   onClose, 
@@ -400,7 +548,10 @@ const SettingsDrawer = ({
   );
 };
 
-// Image Grid Component
+// ============================================================================
+// IMAGE GRID COMPONENT
+// ============================================================================
+
 const ImageGrid = ({ images, selectedImages, onSelect, onImageClick }) => {
   return (
     <div className="image-grid">
@@ -442,7 +593,10 @@ const ImageGrid = ({ images, selectedImages, onSelect, onImageClick }) => {
   );
 };
 
-// Tag Filter Component
+// ============================================================================
+// TAG FILTER COMPONENT
+// ============================================================================
+
 const TagFilter = ({ tags, selectedTags, onTagToggle }) => {
   const renderTagTree = (tagList, depth = 0) => {
     return tagList.map((tag) => (
@@ -478,7 +632,10 @@ const TagFilter = ({ tags, selectedTags, onTagToggle }) => {
   );
 };
 
-// Batch Tagger Component
+// ============================================================================
+// BATCH TAGGER COMPONENT
+// ============================================================================
+
 const BatchTagger = ({ tags, onApply, selectedCount, selectedImages }) => {
   const [selectedTag, setSelectedTag] = useState(null);
   const [action, setAction] = useState('add');
@@ -559,7 +716,10 @@ const BatchTagger = ({ tags, onApply, selectedCount, selectedImages }) => {
   );
 };
 
-// Image Detail Modal
+// ============================================================================
+// IMAGE DETAIL MODAL
+// ============================================================================
+
 const ImageModal = ({ image, tags, onClose, onTagToggle, onDownload }) => {
   if (!image) return null;
 
@@ -620,7 +780,10 @@ const ImageModal = ({ image, tags, onClose, onTagToggle, onDownload }) => {
   );
 };
 
-// Main App Component
+// ============================================================================
+// MAIN APP COMPONENT
+// ============================================================================
+
 export default function App() {
   const [images, setImages] = useState([]);
   const [tags, setTags] = useState([]);
