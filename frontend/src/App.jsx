@@ -139,7 +139,7 @@ function App() {
   
   // Folder browser modal
   const [showFolderModal, setShowFolderModal] = useState(false)
-  const [currentPath, setCurrentPath] = useState('/mnt')
+  const [currentPath, setCurrentPath] = useState('/')
   const [browsingFolders, setBrowsingFolders] = useState([])
   const [parentPath, setParentPath] = useState(null)
   const [folderLoading, setFolderLoading] = useState(false)
