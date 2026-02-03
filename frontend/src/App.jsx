@@ -4,7 +4,7 @@ import logoImg from './assets/logo/framefolio_logo.png'
 import iconWhite from './assets/icons/framefolio_icon_white.png'
 import iconBlack from './assets/icons/framefolio_icon_black.png'
 
-const API_URL = 'http://localhost:8003/api'
+const API_URL = `${window.location.origin}/api`
 
 function ImageModal({ image, tags, onClose, onTagImage, onUntagImage, onCreateTag }) {
   const [tagSearch, setTagSearch] = useState('')
