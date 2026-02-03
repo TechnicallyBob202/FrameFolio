@@ -32,12 +32,11 @@ function ImageModal({ image, tags, onClose, onTagImage, onUntagImage, onCreateTa
       <div className="image-modal" onClick={(e) => e.stopPropagation()}>
         <button className="modal-close" onClick={onClose}>✕</button>
         
-        <div className="image-modal-content">
-          <div className="modal-image-preview">
-            <img src={`${API_URL}/images/${image.id}/preview`} alt={image.name} />
-          </div>
+        <div className="modal-image-preview">
+          <img src={`${API_URL}/images/${image.id}/preview`} alt={image.name} />
+        </div>
 
-          <div className="modal-image-info">
+        <div className="modal-image-info">
             <div className="modal-properties">
               <div className="property">
                 <span className="property-label">Filename</span>
@@ -111,7 +110,6 @@ function ImageModal({ image, tags, onClose, onTagImage, onUntagImage, onCreateTa
                     ))}
                   </div>
                 )}
-              </div>
             </div>
           </div>
         </div>
@@ -459,13 +457,13 @@ function App() {
             className={`nav-item ${activeSection === 'tags' ? 'active' : ''}`}
             onClick={() => setActiveSection('tags')}
           >
-            🏷️ Manage Tags
+            🏷️ Tags
           </button>
           <button
-            className={`nav-item ${activeSection === 'settings' ? 'active' : ''}`}
-            onClick={() => setActiveSection('settings')}
+            className={`nav-item ${activeSection === 'appearance' ? 'active' : ''}`}
+            onClick={() => setActiveSection('appearance')}
           >
-            ⚙️ Settings
+            ⚙️ Appearance
           </button>
         </nav>
       </aside>
@@ -647,7 +645,7 @@ function App() {
         {/* Library Section */}
         {activeSection === 'library' && (
           <section className="content-section">
-            <h2>Library</h2>
+            <h2>Folder Management</h2>
             <div className="library-controls">
               <button className="btn-primary" onClick={() => setShowFolderModal(true)}>
                 + Add Folder
@@ -684,7 +682,7 @@ function App() {
         {/* Manage Tags Section */}
         {activeSection === 'tags' && (
           <section className="content-section">
-            <h2>Manage Tags</h2>
+            <h2>Tag Management</h2>
             <button className="btn-primary" onClick={() => setShowTagModal(true)}>
               + Add Tags
             </button>
@@ -710,12 +708,12 @@ function App() {
         )}
 
         {/* Settings Section */}
-        {activeSection === 'settings' && (
+        {activeSection === 'appearance' && (
           <section className="content-section">
-            <h2>Settings</h2>
+            <h2>UI Management</h2>
             
             <div className="settings-group">
-              <h3>Appearance</h3>
+              <h3>Theme</h3>
               <div className="theme-options">
                 <label>
                   <input
