@@ -253,6 +253,26 @@ body {
   font-size: 12px !important;
 }
 
+.btn-download {
+  padding: 12px 24px;
+  border: none;
+  background: var(--color-success);
+  color: white;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: 'Montserrat', sans-serif;
+  white-space: nowrap;
+}
+
+.btn-download:hover {
+  background: #229954;
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
 .btn-success {
   background: var(--color-success);
   color: white;
@@ -762,10 +782,18 @@ input[type="radio"] {
 }
 
 /* ===== IMAGES SECTION ===== */
-.stats-bar {
+.header-bar {
   display: flex;
   gap: 20px;
   margin-bottom: 24px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.stats-bar {
+  display: flex;
+  gap: 20px;
+  flex: 1;
 }
 
 .stat-item {

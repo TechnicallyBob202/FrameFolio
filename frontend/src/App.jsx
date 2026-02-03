@@ -726,12 +726,20 @@ function App() {
         {/* Images Section */}
         {activeSection === 'images' && (
           <section className="content-section">
-            {/* Stats */}
-            <div className="stats-bar">
-              <div className="stat-item">
-                <span className="stat-label">Total Images</span>
-                <span className="stat-value">{images.length}</span>
+            {/* Stats & Download */}
+            <div className="header-bar">
+              <div className="stats-bar">
+                <div className="stat-item">
+                  <span className="stat-label">Total Images</span>
+                  <span className="stat-value">{images.length}</span>
+                </div>
               </div>
+              
+              {selectedImages.size > 0 && (
+                <button className="btn-download" onClick={downloadSelectedImages}>
+                  ↓ Download Selected Images ({selectedImages.size})
+                </button>
+              )}
             </div>
 
             {/* Search & Controls */}
@@ -755,9 +763,6 @@ function App() {
                   <span>{selectedImages.size} selected</span>
                   <button className="btn-secondary" onClick={clearSelection}>
                     Clear
-                  </button>
-                  <button className="btn-secondary" onClick={downloadSelectedImages}>
-                    ↓ Download
                   </button>
                 </div>
               )}
