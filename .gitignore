@@ -5,12 +5,16 @@
 # Environment
 .env
 .env.local
+venv/
+.venv/
+env/
 
 # Backend
 backend/__pycache__/
 backend/.venv/
 backend/venv/
 backend/*.pyc
+backend/__pycache__/
 
 # Frontend
 frontend/node_modules/
