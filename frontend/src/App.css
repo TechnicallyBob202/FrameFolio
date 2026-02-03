@@ -113,6 +113,20 @@ body {
   flex: 1;
 }
 
+.sidebar-footer {
+  padding: 16px;
+  display: flex;
+  justify-content: center;
+  border-top: 1px solid var(--border-color);
+}
+
+.sidebar-footer img {
+  height: 32px;
+  width: 32px;
+  opacity: 0.6;
+  transition: opacity 0.2s ease;
+}
+
 .nav-item {
   background: transparent;
   border: none;

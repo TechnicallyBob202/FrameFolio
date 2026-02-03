@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react'
 import './App.css'
+import logoImg from './assets/logo/framefolio_logo.png'
+import iconWhite from './assets/icons/framefolio_icon_white.png'
+import iconBlack from './assets/icons/framefolio_icon_black.png'
 
 const API_URL = 'http://localhost:8003/api'
 
@@ -159,7 +162,27 @@ function App() {
   // Apply theme
   useEffect(() => {
     localStorage.setItem('theme', theme)
-    document.documentElement.setAttribute('data-theme', theme)
+    
+    let themeToApply = theme
+    if (theme === 'auto') {
+      // Detect system preference
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+      themeToApply = prefersDark ? 'dark' : 'light'
+    }
+    
+    document.documentElement.setAttribute('data-theme', themeToApply)
+    
+    // If auto, listen for system theme changes
+    if (theme === 'auto') {
+      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
+      const handleChange = (e) => {
+        const newTheme = e.matches ? 'dark' : 'light'
+        document.documentElement.setAttribute('data-theme', newTheme)
+      }
+      
+      mediaQuery.addEventListener('change', handleChange)
+      return () => mediaQuery.removeEventListener('change', handleChange)
+    }
   }, [theme])
 
   // Browse folders on modal open
@@ -437,7 +460,7 @@ function App() {
       {/* Sidebar Navigation */}
       <aside className="sidebar">
         <div className="sidebar-header">
-          <h1>🎬 FrameFolio</h1>
+          <img src={logoImg} alt="FrameFolio" style={{ height: '40px', width: 'auto' }} />
         </div>
         
         <nav className="sidebar-nav">
@@ -445,7 +468,7 @@ function App() {
             className={`nav-item ${activeSection === 'images' ? 'active' : ''}`}
             onClick={() => setActiveSection('images')}
           >
-            📷 Images
+            🖼️ Images
           </button>
           <button
             className={`nav-item ${activeSection === 'library' ? 'active' : ''}`}
@@ -466,6 +489,10 @@ function App() {
             ⚙️ Appearance
           </button>
         </nav>
+        
+        <div className="sidebar-footer">
+          <img src={theme === 'light' ? iconBlack : iconWhite} alt="FrameFolio Icon" />
+        </div>
       </aside>
 
       {/* Main Content */}
