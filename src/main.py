@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, UploadFile, File
 from starlette.responses import FileResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -7,6 +7,8 @@ from PIL import Image
 import sqlite3
 import io
 from datetime import datetime
+import zipfile
+import shutil
 
 app = FastAPI()
 
@@ -541,6 +543,94 @@ def delete_image(image_id: int):
     try:
         delete_image_completely(image_id)
         return {"status": "ok"}
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.post("/api/images/upload")
+async def upload_image(folder_id: int, files: list[UploadFile] = File(...)):
+    """Upload images to a folder"""
+    try:
+        # Get folder path
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute('SELECT path FROM folders WHERE id = ?', (folder_id,))
+        result = cursor.fetchone()
+        conn.close()
+        
+        if not result:
+            return {"error": "Folder not found"}
+        
+        folder_path = Path(result[0])
+        if not folder_path.exists():
+            return {"error": "Folder path does not exist"}
+        
+        uploaded = []
+        for file in files:
+            try:
+                # Save file to folder
+                file_path = folder_path / file.filename
+                contents = await file.read()
+                
+                with open(file_path, 'wb') as f:
+                    f.write(contents)
+                
+                # Add to database
+                image_id = add_image_to_db(str(file_path), folder_id)
+                if image_id:
+                    uploaded.append({"filename": file.filename, "id": image_id})
+            except Exception as e:
+                pass
+        
+        return {"status": "ok", "uploaded": uploaded, "count": len(uploaded)}
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.get("/api/images/{image_id}/download")
+def download_image(image_id: int):
+    """Download original image file"""
+    try:
+        img = get_image_by_id(image_id)
+        if not img:
+            return {"error": "Image not found"}
+        
+        file_path = Path(img["path"])
+        if not file_path.exists():
+            return {"error": "File not found"}
+        
+        return FileResponse(
+            file_path,
+            media_type="application/octet-stream",
+            filename=file_path.name
+        )
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.post("/api/images/download-zip")
+def download_zip(image_ids: list[int]):
+    """Download multiple images as zip"""
+    try:
+        if not image_ids or len(image_ids) == 0:
+            return {"error": "No images selected"}
+        
+        # Create zip in memory
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            for image_id in image_ids:
+                img = get_image_by_id(image_id)
+                if not img:
+                    continue
+                
+                file_path = Path(img["path"])
+                if file_path.exists():
+                    # Add file to zip with just the filename
+                    zip_file.write(file_path, arcname=file_path.name)
+        
+        zip_buffer.seek(0)
+        return StreamingResponse(
+            iter([zip_buffer.getvalue()]),
+            media_type="application/zip",
+            headers={"Content-Disposition": "attachment; filename=images.zip"}
+        )
     except Exception as e:
         return {"error": str(e)}
 

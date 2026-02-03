@@ -6,7 +6,7 @@ import iconBlack from './assets/icons/framefolio_icon_black.png'
 
 const API_URL = `${window.location.origin}/api`
 
-function ImageModal({ image, tags, onClose, onTagImage, onUntagImage, onCreateTag, onRemoveImage, onDeleteImage }) {
+function ImageModal({ image, tags, onClose, onTagImage, onUntagImage, onCreateTag, onRemoveImage, onDeleteImage, onDownloadImage }) {
   const [tagSearch, setTagSearch] = useState('')
   const [deleteConfirm, setDeleteConfirm] = useState(null) // 'remove' or 'delete' or null
   
@@ -130,6 +130,12 @@ function ImageModal({ image, tags, onClose, onTagImage, onUntagImage, onCreateTa
 
             <div className="modal-delete-actions">
               <button 
+                className="btn-primary"
+                onClick={() => onDownloadImage(image.id)}
+              >
+                Download
+              </button>
+              <button 
                 className="btn-delete-secondary"
                 onClick={() => setDeleteConfirm('remove')}
               >
@@ -209,6 +215,10 @@ function App() {
   
   // Sort state
   const [sortBy, setSortBy] = useState('filename-asc')
+  
+  // Upload state
+  const [showUploadModal, setShowUploadModal] = useState(false)
+  const [uploadFolderId, setUploadFolderId] = useState(null)
 
   // Load data on mount
   useEffect(() => {
@@ -411,6 +421,94 @@ function App() {
       await loadTags()
       await loadImages()
       setSelectedTags(new Set())
+    } catch (err) {
+      console.error('Error:', err.message)
+    }
+  }
+
+  async function handleUpload(e) {
+    if (!uploadFolderId) return
+    const files = e.target.files
+    if (files.length === 0) return
+    
+    try {
+      const formData = new FormData()
+      for (let i = 0; i < files.length; i++) {
+        formData.append('files', files[i])
+      }
+      
+      const response = await fetch(
+        `${API_URL}/images/upload?folder_id=${uploadFolderId}`,
+        { method: 'POST', body: formData }
+      )
+      const data = await response.json()
+      if (!data.error) {
+        await loadImages()
+        setShowUploadModal(false)
+        setUploadFolderId(null)
+        e.target.value = ''
+      }
+    } catch (err) {
+      console.error('Error:', err.message)
+    }
+  }
+
+  async function downloadSingleImage(imageId) {
+    try {
+      const response = await fetch(`${API_URL}/images/${imageId}/download`)
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = images.find(img => img.id === imageId)?.name || 'image'
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+    } catch (err) {
+      console.error('Error:', err.message)
+    }
+  }
+
+  async function downloadSelectedImages() {
+    if (selectedImages.size === 0) return
+    try {
+      const response = await fetch(`${API_URL}/images/download-zip`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image_ids: Array.from(selectedImages) })
+      })
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'images.zip'
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+    } catch (err) {
+      console.error('Error:', err.message)
+    }
+  }
+
+  async function downloadFilteredImages() {
+    if (sortedImages.length === 0) return
+    try {
+      const response = await fetch(`${API_URL}/images/download-zip`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image_ids: sortedImages.map(img => img.id) })
+      })
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'images.zip'
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
     } catch (err) {
       console.error('Error:', err.message)
     }
@@ -668,11 +766,26 @@ function App() {
                 className="search-input"
               />
               
+              {folders.length > 0 && (
+                <button className="btn-primary" onClick={() => setShowUploadModal(true)}>
+                  ↑ Upload
+                </button>
+              )}
+              
+              {sortedImages.length > 0 && (
+                <button className="btn-secondary" onClick={downloadFilteredImages}>
+                  ↓ Download All
+                </button>
+              )}
+              
               {selectedImages.size > 0 && (
                 <div className="selection-info">
                   <span>{selectedImages.size} selected</span>
                   <button className="btn-secondary" onClick={clearSelection}>
                     Clear
+                  </button>
+                  <button className="btn-secondary" onClick={downloadSelectedImages}>
+                    ↓ Download
                   </button>
                 </div>
               )}
@@ -992,6 +1105,7 @@ function App() {
         onCreateTag={createTag}
         onRemoveImage={removeImageFromDb}
         onDeleteImage={deleteImageCompletely}
+        onDownloadImage={downloadSingleImage}
       />
 
       {/* Folder Browser Modal */}
@@ -1122,6 +1236,57 @@ function App() {
               <button className="btn-primary" onClick={confirmCreateTags}>
                 Confirm
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Upload Modal */}
+      {showUploadModal && (
+        <div className="modal-overlay" onClick={() => setShowUploadModal(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Upload Images</h2>
+              <button className="modal-close" onClick={() => setShowUploadModal(false)}>✕</button>
+            </div>
+            
+            <div className="modal-content">
+              <p>Select folder for upload:</p>
+              <div className="folders-select">
+                {folders.map(folder => (
+                  <button
+                    key={folder.id}
+                    className={`folder-select-btn ${uploadFolderId === folder.id ? 'selected' : ''}`}
+                    onClick={() => setUploadFolderId(folder.id)}
+                  >
+                    {folder.path}
+                  </button>
+                ))}
+              </div>
+            </div>
+            
+            <div className="modal-footer">
+              <button className="btn-secondary" onClick={() => setShowUploadModal(false)}>
+                Cancel
+              </button>
+              {uploadFolderId && (
+                <>
+                  <input
+                    type="file"
+                    id="file-input"
+                    multiple
+                    accept="image/*"
+                    onChange={handleUpload}
+                    style={{ display: 'none' }}
+                  />
+                  <button 
+                    className="btn-primary"
+                    onClick={() => document.getElementById('file-input').click()}
+                  >
+                    Select Files
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>

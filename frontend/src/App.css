@@ -1384,6 +1384,38 @@ input[type="radio"] {
   font-family: 'Montserrat', sans-serif;
 }
 
+.folders-select {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.folder-select-btn {
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: 'Montserrat', sans-serif;
+  text-align: left;
+}
+
+.folder-select-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--color-accent);
+}
+
+.folder-select-btn.selected {
+  background: var(--color-accent);
+  color: white;
+  border-color: var(--color-accent);
+}
+
 /* ===== RESPONSIVE ===== */
 @media (max-width: 1000px) {
   .image-modal {
