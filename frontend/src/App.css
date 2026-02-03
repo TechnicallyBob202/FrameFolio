@@ -1220,13 +1220,19 @@ input[type="radio"] {
 }
 
 .batch-delete-bar {
-  background: linear-gradient(135deg, rgba(231, 76, 60, 0.1) 0%, rgba(231, 76, 60, 0.05) 100%);
-  border: 1px solid rgba(231, 76, 60, 0.3);
-  border-radius: 12px;
-  padding: 16px;
+  background: transparent;
+  border: none;
+  padding: 0;
   display: flex;
-  gap: 12px;
+  gap: 8px;
   flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.batch-delete-bar .btn-delete-secondary,
+.batch-delete-bar .btn-delete-danger {
+  padding: 8px 12px;
+  font-size: 12px;
 }
 
 .batch-tag-bar {
