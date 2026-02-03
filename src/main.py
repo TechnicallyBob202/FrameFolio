@@ -226,6 +226,8 @@ def get_image_info(image_id):
         return None
     
     file_path = Path(result[1])
+    file_size = file_path.stat().st_size if file_path.exists() else 0
+    
     return {
         "id": result[0],
         "name": file_path.name,
@@ -233,6 +235,7 @@ def get_image_info(image_id):
         "folder_id": result[2],
         "folder_path": result[4],
         "date_added": result[3],
+        "size": file_size,
         "tags": get_image_tags(image_id)
     }
 
@@ -403,6 +406,7 @@ def get_images():
         all_images = []
         for r in results:
             file_path = Path(r[1])
+            file_size = file_path.stat().st_size if file_path.exists() else 0
             all_images.append({
                 "id": r[0],
                 "name": file_path.name,
@@ -410,6 +414,7 @@ def get_images():
                 "folder_id": r[2],
                 "folder_path": r[4],
                 "date_added": r[3],
+                "size": file_size,
                 "tags": get_image_tags(r[0])
             })
         

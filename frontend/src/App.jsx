@@ -206,6 +206,9 @@ function App() {
   
   // Tag selection state
   const [selectedTags, setSelectedTags] = useState(new Set())
+  
+  // Sort state
+  const [sortBy, setSortBy] = useState('filename-asc')
 
   // Load data on mount
   useEffect(() => {
@@ -425,7 +428,7 @@ function App() {
   }
 
   function selectAllImages() {
-    setSelectedImages(new Set(filteredImages.map(img => img.id)))
+    setSelectedImages(new Set(sortedImages.map(img => img.id)))
   }
 
   function clearSelection() {
@@ -553,6 +556,26 @@ function App() {
     return matchesFilename || matchesTags
   })
 
+  // Sort images
+  const sortedImages = [...filteredImages].sort((a, b) => {
+    switch(sortBy) {
+      case 'filename-asc':
+        return a.name.localeCompare(b.name)
+      case 'filename-desc':
+        return b.name.localeCompare(a.name)
+      case 'date-newest':
+        return new Date(b.date_added) - new Date(a.date_added)
+      case 'date-oldest':
+        return new Date(a.date_added) - new Date(b.date_added)
+      case 'size-largest':
+        return b.size - a.size
+      case 'size-smallest':
+        return a.size - b.size
+      default:
+        return 0
+    }
+  })
+
   // Get common tags across all selected images
   function getCommonTags() {
     if (selectedImages.size === 0) return []
@@ -654,43 +677,61 @@ function App() {
                 </div>
               )}
               
-              {filteredImages.length > 0 && (
+              {sortedImages.length > 0 && (
                 <button className="btn-secondary" onClick={selectAllImages}>
                   Select All
                 </button>
               )}
             </div>
 
-            {/* View Mode Selector */}
-            <div className="view-mode-selector">
-              <button
-                className={`view-btn ${viewMode === 'list' ? 'active' : ''}`}
-                onClick={() => setViewMode('list')}
-                title="List view"
-              >
-                ☰
-              </button>
-              <button
-                className={`view-btn ${viewMode === 'small' ? 'active' : ''}`}
-                onClick={() => setViewMode('small')}
-                title="Small thumbnails"
-              >
-                ⊞⊞⊞
-              </button>
-              <button
-                className={`view-btn ${viewMode === 'medium' ? 'active' : ''}`}
-                onClick={() => setViewMode('medium')}
-                title="Medium thumbnails"
-              >
-                ⊞⊞
-              </button>
-              <button
-                className={`view-btn ${viewMode === 'large' ? 'active' : ''}`}
-                onClick={() => setViewMode('large')}
-                title="Large thumbnails"
-              >
-                ⊞
-              </button>
+            {/* Sort & View Mode Controls */}
+            <div className="controls-bar">
+              <div className="sort-selector">
+                <select 
+                  value={sortBy} 
+                  onChange={(e) => setSortBy(e.target.value)}
+                  className="sort-dropdown"
+                >
+                  <option value="filename-asc">Filename (A-Z)</option>
+                  <option value="filename-desc">Filename (Z-A)</option>
+                  <option value="date-newest">Date Added (Newest)</option>
+                  <option value="date-oldest">Date Added (Oldest)</option>
+                  <option value="size-largest">Size (Largest)</option>
+                  <option value="size-smallest">Size (Smallest)</option>
+                </select>
+              </div>
+
+              {/* View Mode Selector */}
+              <div className="view-mode-selector">
+                <button
+                  className={`view-btn ${viewMode === 'list' ? 'active' : ''}`}
+                  onClick={() => setViewMode('list')}
+                  title="List view"
+                >
+                  ☰
+                </button>
+                <button
+                  className={`view-btn ${viewMode === 'small' ? 'active' : ''}`}
+                  onClick={() => setViewMode('small')}
+                  title="Small thumbnails"
+                >
+                  ⊞⊞⊞
+                </button>
+                <button
+                  className={`view-btn ${viewMode === 'medium' ? 'active' : ''}`}
+                  onClick={() => setViewMode('medium')}
+                  title="Medium thumbnails"
+                >
+                  ⊞⊞
+                </button>
+                <button
+                  className={`view-btn ${viewMode === 'large' ? 'active' : ''}`}
+                  onClick={() => setViewMode('large')}
+                  title="Large thumbnails"
+                >
+                  ⊞
+                </button>
+              </div>
             </div>
 
             {/* Batch Tag Bar */}
@@ -773,7 +814,7 @@ function App() {
 
             {/* Images Grid */}
             <div className={`images-grid-with-select view-${viewMode}`}>
-              {filteredImages.map((img) => (
+              {sortedImages.map((img) => (
                 <div 
                   key={img.id}
                   className={`image-card-wrapper ${selectedImages.has(img.id) ? 'selected' : ''}`}
@@ -804,7 +845,7 @@ function App() {
                 </div>
               ))}
             </div>
-            {filteredImages.length === 0 && (
+            {sortedImages.length === 0 && (
               <div className="empty-state">
                 {searchQuery ? 'No images match your search.' : 'No images found. Add folders in Library to get started.'}
               </div>
