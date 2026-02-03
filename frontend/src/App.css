@@ -790,6 +790,12 @@ input[type="radio"] {
   justify-content: space-between;
 }
 
+.header-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
 .stats-bar {
   display: flex;
   gap: 20px;

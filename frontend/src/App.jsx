@@ -509,6 +509,7 @@ function App() {
 
   function clearSelection() {
     setSelectedImages(new Set())
+    setSearchQuery('')
   }
 
   async function addTagToImage(imageId, tagId) {
@@ -735,11 +736,19 @@ function App() {
                 </div>
               </div>
               
-              {selectedImages.size > 0 && (
-                <button className="btn-download" onClick={downloadSelectedImages}>
-                  ↓ Download Selected Images ({selectedImages.size})
-                </button>
-              )}
+              <div className="header-actions">
+                {folders.length > 0 && (
+                  <button className="btn-primary" onClick={() => setShowUploadModal(true)}>
+                    ↑ Upload
+                  </button>
+                )}
+                
+                {selectedImages.size > 0 && (
+                  <button className="btn-download" onClick={downloadSelectedImages}>
+                    ↓ Download Selected Images ({selectedImages.size})
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Search & Controls */}
@@ -751,12 +760,6 @@ function App() {
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="search-input"
               />
-              
-              {folders.length > 0 && (
-                <button className="btn-primary" onClick={() => setShowUploadModal(true)}>
-                  ↑ Upload
-                </button>
-              )}
               
               {selectedImages.size > 0 && (
                 <div className="selection-info">
