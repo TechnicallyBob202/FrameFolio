@@ -18,9 +18,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Database path - persists in mounted volume
+DB_PATH = '/app/data/frametagger.db'
+
 # Initialize database
 def init_db():
-    conn = sqlite3.connect('frametagger.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
     cursor.execute('''
@@ -68,7 +71,7 @@ init_db()
 
 # FOLDER FUNCTIONS
 def get_folders_from_db():
-    conn = sqlite3.connect('frametagger.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute('SELECT id, path FROM folders ORDER BY created_at')
     results = cursor.fetchall()
@@ -76,7 +79,7 @@ def get_folders_from_db():
     return [{"id": r[0], "path": r[1]} for r in results]
 
 def add_folder_to_db(path):
-    conn = sqlite3.connect('frametagger.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     try:
         cursor.execute('INSERT INTO folders (path, created_at) VALUES (?, ?)', 
@@ -89,7 +92,7 @@ def add_folder_to_db(path):
         return False
 
 def remove_folder_from_db(folder_id):
-    conn = sqlite3.connect('frametagger.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute('DELETE FROM folders WHERE id = ?', (folder_id,))
     conn.commit()
@@ -97,7 +100,7 @@ def remove_folder_from_db(folder_id):
 
 # TAG FUNCTIONS
 def get_tags_from_db():
-    conn = sqlite3.connect('frametagger.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute('SELECT id, name FROM tags ORDER BY name')
     results = cursor.fetchall()
@@ -106,7 +109,7 @@ def get_tags_from_db():
 
 def create_tag(name):
     """Create a single tag"""
-    conn = sqlite3.connect('frametagger.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     try:
         cursor.execute('INSERT INTO tags (name, created_at) VALUES (?, ?)',
@@ -119,7 +122,7 @@ def create_tag(name):
         return False
 
 def delete_tag(tag_id):
-    conn = sqlite3.connect('frametagger.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute('DELETE FROM tags WHERE id = ?', (tag_id,))
     conn.commit()
@@ -127,7 +130,7 @@ def delete_tag(tag_id):
 
 def get_image_tags(image_id):
     """Get all tags for an image"""
-    conn = sqlite3.connect('frametagger.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute('''
         SELECT t.id, t.name FROM tags t
@@ -141,7 +144,7 @@ def get_image_tags(image_id):
 
 def add_tag_to_image(image_id, tag_id):
     """Add a tag to an image"""
-    conn = sqlite3.connect('frametagger.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     try:
         cursor.execute('INSERT INTO image_tags (image_id, tag_id, created_at) VALUES (?, ?, ?)',
@@ -155,7 +158,7 @@ def add_tag_to_image(image_id, tag_id):
 
 def remove_tag_from_image(image_id, tag_id):
     """Remove a tag from an image"""
-    conn = sqlite3.connect('frametagger.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute('DELETE FROM image_tags WHERE image_id = ? AND tag_id = ?',
                   (image_id, tag_id))
@@ -164,7 +167,7 @@ def remove_tag_from_image(image_id, tag_id):
 
 def delete_image_from_db(image_id):
     """Remove image from database only (keep file)"""
-    conn = sqlite3.connect('frametagger.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute('DELETE FROM images WHERE id = ?', (image_id,))
     conn.commit()
@@ -192,7 +195,7 @@ def delete_image_completely(image_id):
 
 def get_image_by_id(image_id):
     """Get image info by ID"""
-    conn = sqlite3.connect('frametagger.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute('SELECT id, path, folder_id, date_added FROM images WHERE id = ?', (image_id,))
     result = cursor.fetchone()
@@ -208,7 +211,7 @@ def get_image_by_id(image_id):
 
 def get_image_info(image_id):
     """Get full image info including tags"""
-    conn = sqlite3.connect('frametagger.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute('''
         SELECT i.id, i.path, i.folder_id, i.date_added, f.path as folder_path
@@ -236,7 +239,7 @@ def get_image_info(image_id):
 # IMAGE FUNCTIONS
 def add_image_to_db(path, folder_id):
     """Add image to database if not already there"""
-    conn = sqlite3.connect('frametagger.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     try:
         cursor.execute('INSERT INTO images (path, folder_id, date_added) VALUES (?, ?, ?)',
@@ -386,7 +389,7 @@ def remove_tag(tag_id: int):
 def get_images():
     """Return all images from database"""
     try:
-        conn = sqlite3.connect('frametagger.db')
+        conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         cursor.execute('''
             SELECT i.id, i.path, i.folder_id, i.date_added, f.path as folder_path
