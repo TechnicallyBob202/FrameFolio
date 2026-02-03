@@ -1,0 +1,11 @@
+version: '3.8'
+
+services:
+  app:
+    image: technicallybob/framefolio:latest
+    container_name: framefolio
+    ports:
+      - "8003:8003"
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped

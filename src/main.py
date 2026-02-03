@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from starlette.responses import FileResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 from PIL import Image
 import sqlite3
@@ -488,3 +489,8 @@ def untag_image(image_id: int, tag_id: int):
         return {"status": "ok"}
     except Exception as e:
         return {"error": str(e)}
+
+# Mount static files AFTER all API routes (catch-all, must be last)
+static_path = Path(__file__).parent / "static"
+if static_path.exists():
+    app.mount("/", StaticFiles(directory=static_path, html=True), name="static")
