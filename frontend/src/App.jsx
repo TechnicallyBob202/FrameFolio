@@ -203,6 +203,9 @@ function App() {
   
   // Rescan state
   const [isScanning, setIsScanning] = useState(false)
+  
+  // Tag selection state
+  const [selectedTags, setSelectedTags] = useState(new Set())
 
   // Load data on mount
   useEffect(() => {
@@ -381,6 +384,30 @@ function App() {
       await fetch(`${API_URL}/tags/${tagId}`, { method: 'DELETE' })
       await loadTags()
       await loadImages()
+    } catch (err) {
+      console.error('Error:', err.message)
+    }
+  }
+
+  function toggleSelectTag(tagId) {
+    const newSelected = new Set(selectedTags)
+    if (newSelected.has(tagId)) {
+      newSelected.delete(tagId)
+    } else {
+      newSelected.add(tagId)
+    }
+    setSelectedTags(newSelected)
+  }
+
+  async function deleteSelectedTags() {
+    if (!window.confirm(`Delete ${selectedTags.size} tag(s)?`)) return
+    try {
+      for (const tagId of selectedTags) {
+        await fetch(`${API_URL}/tags/${tagId}`, { method: 'DELETE' })
+      }
+      await loadTags()
+      await loadImages()
+      setSelectedTags(new Set())
     } catch (err) {
       console.error('Error:', err.message)
     }
@@ -830,15 +857,35 @@ function App() {
               + Add Tags
             </button>
             
+            {selectedTags.size > 0 && (
+              <div className="tag-selection-bar">
+                <span>{selectedTags.size} selected</span>
+                <button className="btn-secondary" onClick={() => setSelectedTags(new Set())}>
+                  Clear
+                </button>
+                <button className="btn-danger" onClick={deleteSelectedTags}>
+                  Delete Selected
+                </button>
+              </div>
+            )}
+            
             <div className="tags-list">
               {tags.length === 0 ? (
                 <p className="empty-state">No tags yet</p>
               ) : (
                 tags.map((tag) => (
-                  <div key={tag.id} className="tag-item">
-                    <span>{tag.name}</span>
+                  <div key={tag.id} className={`tag-item ${selectedTags.has(tag.id) ? 'selected' : ''}`}>
+                    <div className="tag-item-header">
+                      <input
+                        type="checkbox"
+                        className="tag-checkbox"
+                        checked={selectedTags.has(tag.id)}
+                        onChange={() => toggleSelectTag(tag.id)}
+                      />
+                      <span>{tag.name}</span>
+                    </div>
                     <button
-                      className="btn-danger"
+                      className="btn-danger btn-small"
                       onClick={() => deleteTag(tag.id)}
                     >
                       Delete
