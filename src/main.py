@@ -739,7 +739,7 @@ async def process_upload(job_id: str, file_contents: list, folder_path: Path, fo
                 
                 # Move original to final location
                 final_path = folder_path / filename
-                staging_file.rename(final_path)
+                shutil.move(str(staging_file), str(final_path))
                 
                 # Update database with final path
                 conn = sqlite3.connect(DB_PATH)
@@ -834,7 +834,7 @@ async def handle_duplicate(job_id: str, req: DuplicateActionRequest):
             
             frameready_path = crop_and_export_frameready(staging_path, folder_path, image_id)
             final_path = folder_path / filename
-            staging_path.rename(final_path)
+            shutil.move(str(staging_path), str(final_path))
             
             conn = sqlite3.connect(DB_PATH)
             cursor = conn.cursor()
@@ -864,7 +864,7 @@ async def handle_duplicate(job_id: str, req: DuplicateActionRequest):
             
             frameready_path = crop_and_export_frameready(staging_path, folder_path, image_id)
             final_path = folder_path / new_filename
-            staging_path.rename(final_path)
+            shutil.move(str(staging_path), str(final_path))
             
             conn = sqlite3.connect(DB_PATH)
             cursor = conn.cursor()
@@ -934,7 +934,7 @@ async def finalize_positioned_upload(job_id: str, req: PositionRequest):
         
         # Move to final location
         final_path = folder_path / filename
-        staging_path.rename(final_path)
+        shutil.move(str(staging_path), str(final_path))
         
         # Update DB
         conn = sqlite3.connect(DB_PATH)
