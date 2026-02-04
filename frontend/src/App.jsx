@@ -9,6 +9,9 @@ import { ConfirmationModal } from './components/modals/ConfirmationModal'
 import { UploadProgressModal } from './components/modals/UploadProgressModal'
 import { DuplicateModal } from './components/modals/DuplicateModal'
 import { CropPositioningModal } from './components/modals/CropPositioningModal'
+import { ImageDetailModal } from './components/modals/ImageDetailModal'
+import { CommonTagsBar } from './components/common/CommonTagsBar'
+import { SmartTagInput } from './components/common/SmartTagInput'
 
 import * as api from './services/api'
 import logoImg from './assets/logo/framefolio_logo.png'
@@ -48,8 +51,8 @@ export default function App() {
   const [tagInput, setTagInput] = useState('')
   const [selectedTags, setSelectedTags] = useState(new Set())
 
-  // Image detail panel state
-  const [detailPanelTags, setDetailPanelTags] = useState([])
+  // Batch tagging state
+  const [batchTagSearch, setBatchTagSearch] = useState('')
 
   // Confirmation modal state
   const [confirmation, setConfirmation] = useState(null)
@@ -76,14 +79,55 @@ export default function App() {
     document.documentElement.setAttribute('data-theme', themeToApply)
   }, [theme])
 
-  // Update detail panel tags when selectedImage changes
-  useEffect(() => {
-    if (selectedImage) {
-      setDetailPanelTags(selectedImage.tags || [])
+  // Batch tagging functions
+  async function handleBatchAddTag(tagId) {
+    try {
+      for (const imageId of selectedImages) {
+        await addTag(imageId, tagId)
+      }
+      await loadImages()
+      notify('Tag applied to all selected images', 'success')
+    } catch (err) {
+      notify('Error adding tag: ' + err.message, 'error')
+      console.error(err)
     }
-  }, [selectedImage])
+  }
 
+  async function handleBatchCreateTag(tagName) {
+    try {
+      const data = await createTag(tagName)
+      if (data.error) {
+        notify('Error creating tag: ' + data.error, 'error')
+        return
+      }
+      await loadTags()
+      // Auto-apply the new tag to all selected images
+      await handleBatchAddTag(data.id)
+    } catch (err) {
+      notify('Error creating tag: ' + err.message, 'error')
+      console.error(err)
+    }
+  }
 
+  async function handleRemoveTagFromSelected(tagId) {
+    const count = selectedImages.size
+    showConfirmation(
+      `Remove this tag from ${count} selected image(s)?`,
+      async () => {
+        try {
+          for (const imageId of selectedImages) {
+            await removeTag(imageId, tagId)
+          }
+          await loadImages()
+          notify('Tag removed from all selected images', 'success')
+        } catch (err) {
+          notify('Error removing tag: ' + err.message, 'error')
+          console.error(err)
+        }
+      },
+      true
+    )
+  }
 
   async function browseFoldersHandler(path) {
     setFolderLoading(true)
@@ -227,22 +271,6 @@ export default function App() {
     } catch (err) {
       notify('Error deleting tags: ' + err.message, 'error')
       console.error(err)
-    }
-  }
-
-  async function handleCreateTagForDialog(name) {
-    try {
-      const data = await createTag(name)
-      if (data.error) {
-        notify('Error creating tag: ' + data.error, 'error')
-        throw new Error(data.error)
-      }
-      await loadTags()
-      return data
-    } catch (err) {
-      notify('Error creating tag: ' + err.message, 'error')
-      console.error(err)
-      throw err
     }
   }
 
@@ -491,17 +519,20 @@ export default function App() {
               </div>
             </div>
 
-            {selectedImages.size > 0 && commonTags.length > 0 && (
-              <div className="common-tags-bar">
-                <span className="common-tags-label">Applied to all:</span>
-                <div className="common-tags-list">
-                  {commonTags.map(tag => (
-                    <button key={tag.id} className="common-tag-badge" onClick={() => {
-                      selectedImages.forEach(id => removeTag(id, tag.id))
-                    }}>
-                      {tag.name} <span className="remove-x">✕</span>
-                    </button>
-                  ))}
+            {/* BATCH TAG SECTION */}
+            {selectedImages.size > 0 && (
+              <div className="batch-tag-section">
+                <CommonTagsBar
+                  tags={commonTags}
+                  onRemoveTag={handleRemoveTagFromSelected}
+                />
+                <div className="batch-tag-bar">
+                  <SmartTagInput
+                    tags={availableTags}
+                    placeholder="Add tags to all selected..."
+                    onTagSelect={handleBatchAddTag}
+                    onTagCreate={handleBatchCreateTag}
+                  />
                 </div>
               </div>
             )}
@@ -646,83 +677,20 @@ export default function App() {
         )}
       </main>
 
-      {/* IMAGE DETAIL PANEL */}
+      {/* IMAGE DETAIL MODAL (replaces right sidebar) */}
       {selectedImage && (
-        <div className="image-detail-panel">
-          <div className="detail-header">
-            <h2>{selectedImage.name}</h2>
-            <button className="detail-close" onClick={() => setSelectedImage(null)}>✕</button>
-          </div>
-
-          <div className="detail-preview">
-            <img src={`${API_URL}/images/${selectedImage.id}/preview`} alt={selectedImage.name} />
-          </div>
-
-          <div className="detail-info">
-            <p><strong>Size:</strong> {(selectedImage.size / 1024 / 1024).toFixed(2)} MB</p>
-            <p><strong>Added:</strong> {new Date(selectedImage.date_added).toLocaleDateString()}</p>
-          </div>
-
-          <div className="detail-tags">
-            <h3>Tags ({detailPanelTags.length})</h3>
-            {detailPanelTags.length > 0 ? (
-              <div className="tag-list">
-                {detailPanelTags.map(tag => (
-                  <div key={tag.id} className="tag-item-small">
-                    <span>{tag.name}</span>
-                    <button className="tag-remove" onClick={() => handleRemoveTagFromSelectedImage(tag.id)}>✕</button>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="empty-message">No tags yet</p>
-            )}
-
-            <div className="add-tags-section">
-              <h4>Add Tags</h4>
-              {availableTags.length > 0 ? (
-                <div className="available-tags">
-                  {availableTags.map(tag => (
-                    <button
-                      key={tag.id}
-                      className="tag-add-btn"
-                      onClick={() => handleAddTagToSelectedImage(selectedImage.id, tag.id)}
-                    >
-                      + {tag.name}
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <p className="empty-message">All tags already applied</p>
-              )}
-            </div>
-          </div>
-
-          <div className="detail-actions">
-            <button
-              className="btn-secondary"
-              onClick={() => handleDownloadSelectedImage(selectedImage.id, selectedImage.name)}
-            >
-              ↓ Download
-            </button>
-            <button
-              className="btn-secondary"
-              onClick={() => {
-                showConfirmation('Remove from library (keep file)?', () => handleRemoveImageFromLibrary(selectedImage.id), false)
-              }}
-            >
-              Remove
-            </button>
-            <button
-              className="btn-danger"
-              onClick={() => {
-                showConfirmation('Delete completely (remove file)?', () => handleDeleteImageCompletely(selectedImage.id), true)
-              }}
-            >
-              Delete
-            </button>
-          </div>
-        </div>
+        <ImageDetailModal
+          image={selectedImage}
+          tags={tags}
+          onClose={() => setSelectedImage(null)}
+          onAddTag={handleAddTagToSelectedImage}
+          onRemoveTag={handleRemoveTagFromSelectedImage}
+          onCreateTag={handleTagCreate}
+          onDownload={handleDownloadSelectedImage}
+          onRemoveFromLibrary={handleRemoveImageFromLibrary}
+          onDeleteCompletely={handleDeleteImageCompletely}
+          showConfirmation={showConfirmation}
+        />
       )}
 
       {showFolderModal && (

@@ -6,4 +6,6 @@
 @import './styles/images.css';
 @import './styles/tags.css';
 @import './styles/modals.css';
+@import './styles/batch-operations.css';
+@import './styles/detail-modal.css';
 @import './styles/notifications.css';

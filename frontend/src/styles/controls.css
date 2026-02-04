@@ -114,6 +114,7 @@
 
 /* ===== INPUTS & SELECTORS ===== */
 .search-input {
+  flex: 1;
   padding: 10px 16px;
   background: var(--bg-tertiary);
   border: 1px solid var(--border-color);
@@ -142,6 +143,10 @@
   cursor: pointer;
   font-family: 'Montserrat', sans-serif;
   transition: all 0.2s ease;
+}
+
+.sort-dropdown {
+  width: fit-content;
 }
 
 .sort-dropdown:focus,

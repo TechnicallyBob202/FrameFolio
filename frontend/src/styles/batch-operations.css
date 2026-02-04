@@ -1,0 +1,165 @@
+/* ===== COMMON TAGS BAR (RED, DANGER STYLE) ===== */
+.common-tags-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, rgba(231, 76, 60, 0.1) 0%, rgba(231, 76, 60, 0.05) 100%);
+  border: 1px solid rgba(231, 76, 60, 0.3);
+  border-radius: 8px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.common-tags-label {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.common-tags-list {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.common-tag-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--color-danger);
+  border: none;
+  border-radius: 6px;
+  color: white;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.common-tag-badge:hover {
+  background: var(--color-danger-hover);
+  transform: translateY(-1px);
+}
+
+.remove-x {
+  font-size: 14px;
+  opacity: 0.8;
+  transition: opacity 0.2s;
+}
+
+.remove-x:hover {
+  opacity: 1;
+}
+
+/* ===== SMART TAG INPUT ===== */
+.smart-tag-input-container {
+  position: relative;
+}
+
+.smart-tag-input {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: 'Montserrat', sans-serif;
+  transition: all 0.2s ease;
+}
+
+.smart-tag-input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  background: var(--bg-hover);
+  box-shadow: 0 0 0 3px rgba(79, 168, 168, 0.1);
+}
+
+.smart-tag-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-top: none;
+  border-radius: 0 0 8px 8px;
+  max-height: 300px;
+  overflow-y: auto;
+  z-index: 50;
+  margin-top: -1px;
+  box-shadow: var(--shadow-lg);
+}
+
+.smart-tag-options {
+  display: flex;
+  flex-direction: column;
+}
+
+.smart-tag-option {
+  width: 100%;
+  padding: 10px 14px;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border-bottom: 1px solid var(--border-color);
+  font-family: 'Montserrat', sans-serif;
+}
+
+.smart-tag-option:hover {
+  background: var(--bg-tertiary);
+  color: var(--color-accent);
+}
+
+.smart-tag-option:last-child {
+  border-bottom: none;
+}
+
+.smart-tag-create {
+  width: 100%;
+  padding: 10px 14px;
+  border: none;
+  background: var(--color-success);
+  color: white;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: 'Montserrat', sans-serif;
+}
+
+.smart-tag-create:hover {
+  background: #229954;
+}
+
+/* ===== BATCH TAG SECTION (wrapper) ===== */
+.batch-tag-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.batch-tag-bar {
+  background: linear-gradient(135deg, rgba(79, 168, 168, 0.1) 0%, rgba(79, 168, 168, 0.05) 100%);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+/* ===== DETAIL MODAL TAG INPUT SECTION ===== */
+.detail-tag-input-section {
+  margin-top: 12px;
+}
