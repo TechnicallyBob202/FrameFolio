@@ -31,7 +31,7 @@ export default function App() {
 
   // Library state
   const [showFolderModal, setShowFolderModal] = useState(false)
-  const [currentPath, setCurrentPath] = useState('/')
+  const [currentPath, setCurrentPath] = useState('/mnt')
   const [browsingFolders, setBrowsingFolders] = useState([])
   const [parentPath, setParentPath] = useState(null)
   const [folderLoading, setFolderLoading] = useState(false)
