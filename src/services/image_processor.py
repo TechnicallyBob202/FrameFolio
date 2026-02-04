@@ -31,13 +31,13 @@ def compute_md5(file_path: str | Path) -> str:
 
 def check_duplicates(db_path: str, md5_hash: str) -> dict | None:
     """
-    Check for duplicate in main library + staging.
+    Check for duplicate in database (already processed files).
     Returns duplicate info if found, None otherwise.
     """
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     
-    # Check main images table
+    # Check main images table only
     cursor.execute('SELECT id, path FROM images WHERE md5_hash = ?', (md5_hash,))
     result = cursor.fetchone()
     conn.close()
@@ -48,18 +48,6 @@ def check_duplicates(db_path: str, md5_hash: str) -> dict | None:
             'id': result[0],
             'path': result[1]
         }
-    
-    # Check staging directory
-    for staging_file in STAGING_DIR.rglob('*'):
-        if staging_file.is_file():
-            try:
-                if compute_md5(staging_file) == md5_hash:
-                    return {
-                        'location': 'staging',
-                        'path': str(staging_file)
-                    }
-            except Exception:
-                pass
     
     return None
 
