@@ -182,17 +182,14 @@
   align-items: center;
   gap: 6px;
   padding: 6px 12px;
-  background: rgba(79, 168, 168, 0.15);
-  border: 1px solid rgba(79, 168, 168, 0.3);
+  background: var(--color-accent);
+  border: none;
   border-radius: 6px;
-  color: var(--color-accent);
+  color: white;
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
-  border: none;
-  background: var(--color-accent);
-  color: white;
 }
 
 .common-tag-badge:hover {
