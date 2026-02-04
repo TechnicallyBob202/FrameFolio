@@ -106,7 +106,9 @@ export default function App() {
     const pollInterval = setInterval(async () => {
       try {
         const status = await (await fetch(`${API_URL}/images/upload/${jobId}/status`)).json()
+        console.log('Poll response:', status)  // ADD THIS
         const needsAction = status.results.find(r => r.status === 'duplicate_detected' || r.status === 'needs_positioning')
+        console.log('needsAction:', needsAction)  // ADD THIS
         if (needsAction) {
           clearInterval(pollInterval)
           setUploadState(prev => ({ ...prev, uploadingFile: needsAction }))
