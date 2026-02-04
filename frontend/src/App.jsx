@@ -42,10 +42,6 @@ export default function App() {
   const [selectedTags, setSelectedTags] = useState(new Set())
 
   useEffect(() => {
-    console.log('uploadState changed:', uploadState)
-  }, [uploadState])
-
-  useEffect(() => {
     localStorage.setItem('theme', theme)
     let themeToApply = theme
     if (theme === 'auto') {
@@ -110,16 +106,10 @@ export default function App() {
     const pollInterval = setInterval(async () => {
       try {
         const status = await (await fetch(`${API_URL}/images/upload/${jobId}/status`)).json()
-        console.log('Poll response:', status)
         const needsAction = status.results.find(r => r.status === 'duplicate_detected' || r.status === 'needs_positioning')
-        console.log('needsAction:', needsAction)
         if (needsAction) {
           clearInterval(pollInterval)
-          console.log('Setting uploadingFile:', needsAction)  // ADD THIS
-          setUploadState(prev => {
-            console.log('Setting state to:', { ...prev, uploadingFile: needsAction })  // ADD THIS
-            return { ...prev, uploadingFile: needsAction }
-          })
+          setUploadState(prev => ({ ...prev, uploadingFile: needsAction }))
           return
         }
         if (status.status === 'complete') {

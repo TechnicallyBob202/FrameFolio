@@ -76,18 +76,39 @@ export function CropPositioningModal({ result, jobId, onComplete }) {
         { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filename: result.filename, crop_box }) }
       )
       const data = await response.json()
-      if (!data.error) onComplete()
+      if (!data.error) {
+        onComplete()
+      } else {
+        alert('Positioning failed: ' + data.error)
+        setIsSubmitting(false)
+      }
     } catch (err) {
       console.error('Positioning failed:', err)
-    } finally {
+      alert('Error: ' + err.message)
       setIsSubmitting(false)
     }
   }
 
-  function handleCancel() {
-    // Actually cancel the upload for this file
-    if (window.confirm('Cancel this upload?')) {
-      onComplete() // Signal to continue polling (will skip this file)
+  async function handleCancel() {
+    if (!window.confirm('Skip this image?')) return
+    
+    setIsSubmitting(true)
+    try {
+      const response = await fetch(
+        `${window.location.origin}/api/images/upload/${jobId}/position-skip`,
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filename: result.filename }) }
+      )
+      const data = await response.json()
+      if (!data.error) {
+        onComplete()
+      } else {
+        alert('Skip failed: ' + data.error)
+        setIsSubmitting(false)
+      }
+    } catch (err) {
+      console.error('Skip failed:', err)
+      alert('Error: ' + err.message)
+      setIsSubmitting(false)
     }
   }
 
@@ -145,7 +166,7 @@ export function CropPositioningModal({ result, jobId, onComplete }) {
           </div>
         </div>
         <div className="modal-footer">
-          <button className="btn-secondary" onClick={handleCancel} disabled={isSubmitting}>Cancel Upload</button>
+          <button className="btn-secondary" onClick={handleCancel} disabled={isSubmitting}>Skip Image</button>
           <button className="btn-primary" onClick={handleSubmit} disabled={isSubmitting}>{isSubmitting ? 'Processing...' : 'Confirm'}</button>
         </div>
       </div>

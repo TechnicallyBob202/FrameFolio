@@ -940,6 +940,34 @@ async def finalize_positioned_upload(job_id: str, filename: str, crop_box: dict)
     except Exception as e:
         return {"error": str(e)}
 
+@app.post("/api/images/upload/{job_id}/position-skip")
+async def skip_positioned_upload(job_id: str, filename: str):
+    """
+    User skipped positioning. Mark file as skipped.
+    """
+    if job_id not in upload_jobs:
+        return {"error": "Job not found"}
+    
+    try:
+        result = next((r for r in upload_jobs[job_id]["results"] if r["filename"] == filename), None)
+        if not result or result["status"] != "needs_positioning":
+            return {"error": "File not found in positioning queue"}
+        
+        staging_path = Path(result["staging_path"])
+        cleanup_staging_file(staging_path)
+        
+        result["status"] = "skipped"
+        
+        # Check if all files are now done
+        files_needing_action = any(r["status"] in ["duplicate_detected", "needs_positioning"] for r in upload_jobs[job_id]["results"])
+        if not files_needing_action:
+            upload_jobs[job_id]["status"] = "complete"
+        
+        return {"status": "ok", "action": "skipped"}
+        
+    except Exception as e:
+        return {"error": str(e)}
+
 @app.get("/api/images/{image_id}/download")
 def download_image(image_id: int):
     """Download original image file"""
