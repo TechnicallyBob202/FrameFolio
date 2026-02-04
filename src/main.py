@@ -375,7 +375,6 @@ def rescan_library():
     
     for folder in folders:
         folder_path = Path(folder["path"])
-        frameready_folder = folder.get("frameready_folder")
         
         if not folder_path.exists():
             continue
@@ -383,8 +382,8 @@ def rescan_library():
         try:
             for file_path in folder_path.rglob('*'):
                 try:
-                    # Skip frameready folder
-                    if frameready_folder and frameready_folder in file_path.parts:
+                    # Skip any .frameready_* folder
+                    if any(part.startswith('.frameready_') for part in file_path.parts):
                         continue
                     
                     if file_path.is_file() and file_path.suffix.lower() in IMAGE_EXTENSIONS:

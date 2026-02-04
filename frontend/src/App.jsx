@@ -806,7 +806,7 @@ export default function App() {
       )}
 
       {uploadState.processing && uploadState.jobId && !uploadState.uploadingFile && (
-        <UploadProgressModal jobId={uploadState.jobId} onComplete={() => setUploadState({ jobId: null, uploadingFile: null, processing: false })} onError={() => setUploadState({ jobId: null, uploadingFile: null, processing: false })} />
+        <UploadProgressModal jobId={uploadState.jobId} onComplete={async () => { await loadImages(); setShowUploadModal(false); setUploadFolderId(null); setUploadState({ jobId: null, uploadingFile: null, processing: false }); }} onError={() => setUploadState({ jobId: null, uploadingFile: null, processing: false })} />
       )}
 
       {uploadState.uploadingFile?.status === 'duplicate_detected' && (
