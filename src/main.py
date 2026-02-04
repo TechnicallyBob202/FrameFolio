@@ -1013,6 +1013,43 @@ async def skip_positioned_upload(job_id: str, req: SkipPositionRequest):
     except Exception as e:
         return {"error": str(e)}
 
+@app.get("/api/images/{image_id}/frameready")
+def get_frameready(image_id: int):
+    """Get FrameReady version if available, else fallback to preview"""
+    try:
+        img = get_image_by_id(image_id)
+        if not img:
+            return {"error": "Image not found"}
+        
+        # Get frameready path from DB
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute('SELECT frameready_path FROM images WHERE id = ?', (image_id,))
+        result = cursor.fetchone()
+        conn.close()
+        
+        frameready_path = result[0] if result and result[0] else None
+        
+        # Return FrameReady if it exists
+        if frameready_path and Path(frameready_path).exists():
+            return FileResponse(frameready_path, media_type="image/jpeg")
+        
+        # Fallback: return preview
+        file_path = Path(img["path"])
+        if not file_path.exists():
+            return {"error": "File not found"}
+        
+        image = Image.open(file_path)
+        image.thumbnail((1920, 1080), Image.Resampling.LANCZOS)
+        
+        img_bytes = io.BytesIO()
+        image.save(img_bytes, format='JPEG', quality=95)
+        img_bytes.seek(0)
+        
+        return StreamingResponse(img_bytes, media_type="image/jpeg")
+    except Exception as e:
+        return {"error": str(e)}
+
 @app.get("/api/images/{image_id}/download")
 def download_image(image_id: int):
     """Download FrameReady version if available, else original"""
@@ -1082,10 +1119,10 @@ def download_zip(image_ids: list[int]):
                     zip_file.write(file_path, arcname=file_path.name)
         
         zip_buffer.seek(0)
-        return StreamingResponse(
-            iter([zip_buffer.getvalue()]),
+        return FileResponse(
+            zip_buffer,
             media_type="application/zip",
-            headers={"Content-Disposition": "attachment; filename=images.zip"}
+            filename="images.zip"
         )
     except Exception as e:
         return {"error": str(e)}
