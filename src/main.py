@@ -749,7 +749,14 @@ async def process_upload(job_id: str, file_contents: list, folder_path: Path, fo
                 except:
                     pass
         
-        upload_jobs[job_id]["status"] = "complete"
+        # Check if any files still need user action
+        files_needing_action = any(r["status"] in ["duplicate_detected", "needs_positioning"] for r in upload_jobs[job_id]["results"])
+        
+        if files_needing_action:
+            upload_jobs[job_id]["status"] = "waiting_for_user_action"
+        else:
+            upload_jobs[job_id]["status"] = "complete"
+        
         upload_jobs[job_id]["progress"] = 100
         
     except Exception as e:
@@ -791,6 +798,10 @@ async def handle_duplicate(job_id: str, filename: str, action: str):
         if action == "skip":
             cleanup_staging_file(staging_path)
             result["status"] = "skipped"
+            # Check if all files are done
+            files_needing_action = any(r["status"] in ["duplicate_detected", "needs_positioning"] for r in upload_jobs[job_id]["results"])
+            if not files_needing_action:
+                upload_jobs[job_id]["status"] = "complete"
             return {"status": "ok", "action": "skipped"}
         
         elif action == "overwrite":
@@ -819,6 +830,10 @@ async def handle_duplicate(job_id: str, filename: str, action: str):
             result["status"] = "success"
             result["id"] = image_id
             result["frameready"] = frameready_path
+            # Check if all files are done
+            files_needing_action = any(r["status"] in ["duplicate_detected", "needs_positioning"] for r in upload_jobs[job_id]["results"])
+            if not files_needing_action:
+                upload_jobs[job_id]["status"] = "complete"
             return {"status": "ok", "id": image_id}
         
         elif action == "import_anyway":
@@ -845,6 +860,10 @@ async def handle_duplicate(job_id: str, filename: str, action: str):
             result["status"] = "success"
             result["id"] = image_id
             result["frameready"] = frameready_path
+            # Check if all files are done
+            files_needing_action = any(r["status"] in ["duplicate_detected", "needs_positioning"] for r in upload_jobs[job_id]["results"])
+            if not files_needing_action:
+                upload_jobs[job_id]["status"] = "complete"
             return {"status": "ok", "id": image_id, "renamed_to": new_filename}
         
         else:
@@ -910,6 +929,11 @@ async def finalize_positioned_upload(job_id: str, filename: str, crop_box: dict)
         result["status"] = "success"
         result["id"] = image_id
         result["frameready"] = frameready_path
+        
+        # Check if all files are now done
+        files_needing_action = any(r["status"] in ["duplicate_detected", "needs_positioning"] for r in upload_jobs[job_id]["results"])
+        if not files_needing_action:
+            upload_jobs[job_id]["status"] = "complete"
         
         return {"status": "ok", "id": image_id, "frameready": frameready_path}
         
