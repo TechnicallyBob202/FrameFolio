@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { X } from 'lucide-react';
 
 export default function InfoBanner() {
   const [isVisible, setIsVisible] = useState(false);
@@ -39,10 +38,10 @@ export default function InfoBanner() {
       </div>
       <button
         onClick={handleClose}
-        className="text-blue-400 hover:text-blue-600 flex-shrink-0"
+        className="text-blue-400 hover:text-blue-600 flex-shrink-0 text-xl"
         aria-label="Close banner"
       >
-        <X size={18} />
+        ✕
       </button>
     </div>
   );
