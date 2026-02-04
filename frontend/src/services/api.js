@@ -42,7 +42,7 @@ export async function downloadMultipleImages(imageIds) {
   const response = await fetch(`${API_URL}/images/download-zip`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(imageIds)
+    body: JSON.stringify({ image_ids: imageIds })
   })
   const blob = await response.blob()
   const url = window.URL.createObjectURL(blob)

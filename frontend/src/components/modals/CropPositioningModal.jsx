@@ -19,7 +19,7 @@ export function CropPositioningModal({ result, jobId, onComplete }) {
     boxWidth = maxHeight * TARGET_ASPECT
   } else {
     boxWidth = maxWidth
-    boxHeight = maxWidth / TARGET_ASPECT
+    boxHeight = boxWidth / TARGET_ASPECT
   }
 
   const handleMouseDown = (e) => {
@@ -60,15 +60,16 @@ export function CropPositioningModal({ result, jobId, onComplete }) {
   async function handleSubmit() {
     setIsSubmitting(true)
     try {
-      // Convert image position/scale to crop_box for the backend
-      const scaledWidth = (aspectInfo.width / imageScale)
-      const scaledHeight = (aspectInfo.height / imageScale)
+      // Calculate original image dimensions at current scale
+      const scaledWidth = aspectInfo.width / imageScale
+      const scaledHeight = aspectInfo.height / imageScale
       
+      // Calculate what part of the original image is visible in the yellow box (0-1 normalized)
       const crop_box = {
-        x: Math.max(0, -imageOffset.x / boxWidth / (aspectInfo.width / boxWidth)),
-        y: Math.max(0, -imageOffset.y / boxHeight / (aspectInfo.height / boxHeight)),
-        width: Math.min(1, boxWidth / scaledWidth),
-        height: Math.min(1, boxHeight / scaledHeight)
+        x: Math.max(0, Math.min(1, -imageOffset.x / scaledWidth)),
+        y: Math.max(0, Math.min(1, -imageOffset.y / scaledHeight)),
+        width: Math.min(1 - Math.max(0, -imageOffset.x / scaledWidth), boxWidth / scaledWidth),
+        height: Math.min(1 - Math.max(0, -imageOffset.y / scaledHeight), boxHeight / scaledHeight)
       }
 
       const response = await fetch(

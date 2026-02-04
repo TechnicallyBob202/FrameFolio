@@ -26,7 +26,7 @@ export function useFolders() {
   const rescan = async () => {
     setIsScanning(true)
     try {
-      await api.rescanLibrary()
+      return await api.rescanLibrary()
     } finally {
       setIsScanning(false)
     }

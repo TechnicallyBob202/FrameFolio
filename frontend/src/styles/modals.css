@@ -381,3 +381,34 @@ input[type="radio"] {
   cursor: pointer;
   accent-color: var(--color-accent);
 }
+
+/* ===== CROP POSITIONING MODAL ===== */
+.positioning-modal {
+  max-width: 750px;
+  max-height: 90vh;
+}
+
+.positioning-content {
+  gap: 12px;
+  max-height: calc(90vh - 180px);
+}
+
+.positioning-info {
+  display: flex;
+  gap: 16px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  padding: 12px;
+  border-radius: 8px;
+}
+
+.positioning-info p {
+  margin: 0;
+  flex: 1;
+}
+
+.crop-preview-container {
+  display: block !important;
+  background: var(--bg-primary) !important;
+}

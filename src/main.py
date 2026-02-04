@@ -255,22 +255,49 @@ def delete_image_from_db(image_id):
     conn.close()
 
 def delete_image_completely(image_id):
-    """Remove image from database and delete the file"""
+    """Remove image from database and delete both original and FrameReady files"""
     img = get_image_by_id(image_id)
     if not img:
         return False
     
     file_path = Path(img["path"])
     
+    # Get frameready path from DB
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute('SELECT frameready_path FROM images WHERE id = ?', (image_id,))
+    result = cursor.fetchone()
+    frameready_path = result[0] if result and result[0] else None
+    
+    # Try disk if not in DB
+    if not frameready_path:
+        frameready_path = find_frameready_on_disk(img["path"], image_id)
+    
     # Delete from database first
     delete_image_from_db(image_id)
     
-    # Then delete the file
+    # Then delete the files
     try:
         if file_path.exists():
             file_path.unlink()
+        
+        if frameready_path and Path(frameready_path).exists():
+            frameready_file = Path(frameready_path)
+            frameready_file.unlink()
+            
+            # Try to cleanup empty frameready directory
+            frameready_dir = frameready_file.parent
+            try:
+                if frameready_dir.exists() and frameready_dir.name.startswith('.frameready_'):
+                    if not any(frameready_dir.iterdir()):
+                        frameready_dir.rmdir()
+            except Exception:
+                pass
+        
+        conn.close()
         return True
     except Exception:
+        conn.close()
         # DB deletion succeeded even if file deletion failed
         return True
 
