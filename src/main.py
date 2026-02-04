@@ -9,6 +9,13 @@ import io
 from datetime import datetime
 import zipfile
 import shutil
+import uuid
+import asyncio
+from services.image_processor import (
+    compute_md5, check_duplicates, detect_orientation_and_aspect,
+    generate_thumbnail, get_file_info, crop_and_export_frameready,
+    cleanup_staging, cleanup_staging_file, ensure_staging_dir, STAGING_DIR
+)
 
 app = FastAPI()
 
@@ -22,6 +29,9 @@ app.add_middleware(
 
 # Database path - persists in mounted volume
 DB_PATH = '/app/data/frametagger.db'
+
+# In-memory job tracker for upload progress
+upload_jobs = {}
 
 # Initialize database
 def init_db():
@@ -48,6 +58,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS images (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             path TEXT UNIQUE NOT NULL,
+            md5_hash TEXT,
             folder_id INTEGER NOT NULL,
             date_added TEXT NOT NULL,
             FOREIGN KEY(folder_id) REFERENCES folders(id) ON DELETE CASCADE
@@ -70,6 +81,7 @@ def init_db():
     conn.close()
 
 init_db()
+ensure_staging_dir()
 
 # FOLDER FUNCTIONS
 def get_folders_from_db():
@@ -242,13 +254,13 @@ def get_image_info(image_id):
     }
 
 # IMAGE FUNCTIONS
-def add_image_to_db(path, folder_id):
+def add_image_to_db(path, folder_id, md5_hash=None):
     """Add image to database if not already there"""
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     try:
-        cursor.execute('INSERT INTO images (path, folder_id, date_added) VALUES (?, ?, ?)',
-                      (path, folder_id, datetime.now().isoformat()))
+        cursor.execute('INSERT INTO images (path, md5_hash, folder_id, date_added) VALUES (?, ?, ?, ?)',
+                      (path, md5_hash, folder_id, datetime.now().isoformat()))
         conn.commit()
         image_id = cursor.lastrowid
         conn.close()
@@ -546,42 +558,337 @@ def delete_image(image_id: int):
     except Exception as e:
         return {"error": str(e)}
 
-@app.post("/api/images/upload")
-async def upload_image(folder_id: int, files: list[UploadFile] = File(...)):
-    """Upload images to a folder"""
+# UPLOAD - NEW FLOW WITH DUPLICATE DETECTION + ASPECT HANDLING
+
+@app.post("/api/images/upload/start")
+async def start_upload(folder_id: int, files: list[UploadFile] = File(...)):
+    """
+    Start upload job. Returns job_id for polling progress.
+    Handles: duplicate detection, portrait rejection, aspect ratio dialog.
+    """
+    job_id = str(uuid.uuid4())
+    
+    # Initialize job state
+    upload_jobs[job_id] = {
+        "status": "processing",
+        "current_step": "initializing",
+        "progress": 0,
+        "total_files": len(files),
+        "folder_id": folder_id,
+        "results": [],
+        "errors": []
+    }
+    
+    # Get folder path
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute('SELECT path FROM folders WHERE id = ?', (folder_id,))
+    result = cursor.fetchone()
+    conn.close()
+    
+    if not result:
+        upload_jobs[job_id]["status"] = "error"
+        upload_jobs[job_id]["errors"].append("Folder not found")
+        return {"job_id": job_id}
+    
+    folder_path = Path(result[0])
+    if not folder_path.exists():
+        upload_jobs[job_id]["status"] = "error"
+        upload_jobs[job_id]["errors"].append("Folder path does not exist")
+        return {"job_id": job_id}
+    
+    # Process files asynchronously
+    asyncio.create_task(process_upload(job_id, files, folder_path, folder_id))
+    
+    return {"job_id": job_id}
+
+@app.get("/api/images/upload/{job_id}/status")
+def get_upload_status(job_id: str):
+    """Poll upload job progress"""
+    if job_id not in upload_jobs:
+        return {"error": "Job not found"}
+    return upload_jobs[job_id]
+
+async def process_upload(job_id: str, files: list[UploadFile], folder_path: Path, folder_id: int):
+    """
+    Process upload with duplicate detection, portrait rejection, aspect analysis.
+    """
     try:
+        for idx, file in enumerate(files):
+            upload_jobs[job_id]["progress"] = int((idx / len(files)) * 100)
+            upload_jobs[job_id]["current_step"] = f"Processing {file.filename}"
+            
+            try:
+                # Read file to staging
+                upload_jobs[job_id]["current_step"] = f"Reading {file.filename}"
+                contents = await file.read()
+                staging_file = STAGING_DIR / f"{uuid.uuid4()}_{file.filename}"
+                
+                with open(staging_file, 'wb') as f:
+                    f.write(contents)
+                
+                # Compute MD5
+                upload_jobs[job_id]["current_step"] = f"Computing hash for {file.filename}"
+                md5_hash = compute_md5(staging_file)
+                
+                # Check duplicates
+                upload_jobs[job_id]["current_step"] = f"Checking duplicates for {file.filename}"
+                dup = check_duplicates(DB_PATH, md5_hash)
+                
+                if dup:
+                    dup_info = get_file_info(dup['path'])
+                    dup_thumb = generate_thumbnail(dup['path'])
+                    incoming_thumb = generate_thumbnail(staging_file)
+                    
+                    upload_jobs[job_id]["results"].append({
+                        "filename": file.filename,
+                        "status": "duplicate_detected",
+                        "staging_path": str(staging_file),
+                        "duplicate": {
+                            "location": dup['location'],
+                            "id": dup.get('id'),
+                            "path": dup['path'],
+                            "info": dup_info,
+                            "thumbnail": dup_thumb
+                        },
+                        "incoming": {
+                            "info": get_file_info(staging_file),
+                            "thumbnail": incoming_thumb
+                        }
+                    })
+                    continue
+                
+                # Check orientation
+                upload_jobs[job_id]["current_step"] = f"Analyzing {file.filename}"
+                aspect_info = detect_orientation_and_aspect(staging_file)
+                
+                if aspect_info['orientation'] == 'portrait':
+                    upload_jobs[job_id]["results"].append({
+                        "filename": file.filename,
+                        "status": "portrait_rejected",
+                        "error": "Portrait orientation not supported"
+                    })
+                    cleanup_staging_file(staging_file)
+                    continue
+                
+                # If not close to 16:9, need user input
+                if not aspect_info['is_close_to_16_9']:
+                    upload_jobs[job_id]["results"].append({
+                        "filename": file.filename,
+                        "status": "needs_positioning",
+                        "aspect_info": aspect_info,
+                        "thumbnail": generate_thumbnail(staging_file, size=600),
+                        "staging_path": str(staging_file)
+                    })
+                    continue
+                
+                # Auto-crop and export FrameReady
+                upload_jobs[job_id]["current_step"] = f"Finalizing {file.filename}"
+                
+                # Add to database
+                image_id = add_image_to_db(
+                    str(folder_path / file.filename),
+                    folder_id,
+                    md5_hash
+                )
+                
+                if not image_id:
+                    upload_jobs[job_id]["errors"].append(f"Failed to add {file.filename} to database")
+                    cleanup_staging_file(staging_file)
+                    continue
+                
+                # Crop and export to FrameReady
+                frameready_path = crop_and_export_frameready(staging_file, folder_path, image_id)
+                
+                # Move original to final location
+                final_path = folder_path / file.filename
+                staging_file.rename(final_path)
+                
+                # Update database with final path
+                conn = sqlite3.connect(DB_PATH)
+                cursor = conn.cursor()
+                cursor.execute('UPDATE images SET path = ? WHERE id = ?', (str(final_path), image_id))
+                conn.commit()
+                conn.close()
+                
+                upload_jobs[job_id]["results"].append({
+                    "filename": file.filename,
+                    "status": "success",
+                    "id": image_id,
+                    "frameready": frameready_path
+                })
+                
+            except Exception as e:
+                upload_jobs[job_id]["errors"].append(f"{file.filename}: {str(e)}")
+                try:
+                    cleanup_staging_file(staging_file)
+                except:
+                    pass
+        
+        upload_jobs[job_id]["status"] = "complete"
+        upload_jobs[job_id]["progress"] = 100
+        
+    except Exception as e:
+        upload_jobs[job_id]["status"] = "error"
+        upload_jobs[job_id]["errors"].append(str(e))
+
+@app.post("/api/images/upload/{job_id}/duplicate-action")
+async def handle_duplicate(job_id: str, filename: str, action: str):
+    """
+    Handle user's duplicate decision: skip, overwrite, or import_anyway.
+    action: "skip" | "overwrite" | "import_anyway"
+    """
+    if job_id not in upload_jobs:
+        return {"error": "Job not found"}
+    
+    try:
+        result = next((r for r in upload_jobs[job_id]["results"] if r["filename"] == filename), None)
+        if not result or result["status"] != "duplicate_detected":
+            return {"error": "File not found or not in duplicate state"}
+        
+        staging_path = Path(result["staging_path"])
+        if not staging_path.exists():
+            return {"error": "Staging file not found"}
+        
+        folder_id = upload_jobs[job_id]["folder_id"]
+        
         # Get folder path
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         cursor.execute('SELECT path FROM folders WHERE id = ?', (folder_id,))
-        result = cursor.fetchone()
+        folder_result = cursor.fetchone()
         conn.close()
         
-        if not result:
+        if not folder_result:
             return {"error": "Folder not found"}
         
-        folder_path = Path(result[0])
-        if not folder_path.exists():
-            return {"error": "Folder path does not exist"}
+        folder_path = Path(folder_result[0])
         
-        uploaded = []
-        for file in files:
-            try:
-                # Save file to folder
-                file_path = folder_path / file.filename
-                contents = await file.read()
-                
-                with open(file_path, 'wb') as f:
-                    f.write(contents)
-                
-                # Add to database
-                image_id = add_image_to_db(str(file_path), folder_id)
-                if image_id:
-                    uploaded.append({"filename": file.filename, "id": image_id})
-            except Exception as e:
-                pass
+        if action == "skip":
+            cleanup_staging_file(staging_path)
+            result["status"] = "skipped"
+            return {"status": "ok", "action": "skipped"}
         
-        return {"status": "ok", "uploaded": uploaded, "count": len(uploaded)}
+        elif action == "overwrite":
+            # Delete old image file and DB entry
+            old_image_id = result["duplicate"]["id"]
+            if old_image_id:
+                delete_image_completely(old_image_id)
+            
+            # Process new file like normal
+            md5_hash = compute_md5(staging_path)
+            image_id = add_image_to_db(str(folder_path / filename), folder_id, md5_hash)
+            
+            if not image_id:
+                return {"error": "Failed to add image to database"}
+            
+            frameready_path = crop_and_export_frameready(staging_path, folder_path, image_id)
+            final_path = folder_path / filename
+            staging_path.rename(final_path)
+            
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
+            cursor.execute('UPDATE images SET path = ? WHERE id = ?', (str(final_path), image_id))
+            conn.commit()
+            conn.close()
+            
+            result["status"] = "success"
+            result["id"] = image_id
+            result["frameready"] = frameready_path
+            return {"status": "ok", "id": image_id}
+        
+        elif action == "import_anyway":
+            # Rename file to avoid conflict
+            base, ext = filename.rsplit('.', 1) if '.' in filename else (filename, '')
+            new_filename = f"{base}_1.{ext}" if ext else f"{filename}_1"
+            
+            md5_hash = compute_md5(staging_path)
+            image_id = add_image_to_db(str(folder_path / new_filename), folder_id, md5_hash)
+            
+            if not image_id:
+                return {"error": "Failed to add image to database"}
+            
+            frameready_path = crop_and_export_frameready(staging_path, folder_path, image_id)
+            final_path = folder_path / new_filename
+            staging_path.rename(final_path)
+            
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
+            cursor.execute('UPDATE images SET path = ? WHERE id = ?', (str(final_path), image_id))
+            conn.commit()
+            conn.close()
+            
+            result["status"] = "success"
+            result["id"] = image_id
+            result["frameready"] = frameready_path
+            return {"status": "ok", "id": image_id, "renamed_to": new_filename}
+        
+        else:
+            return {"error": "Invalid action"}
+        
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.post("/api/images/upload/{job_id}/position")
+async def finalize_positioned_upload(job_id: str, filename: str, crop_box: dict):
+    """
+    User has positioned the crop box. Finalize this file.
+    crop_box: {x, y, width, height} in normalized 0-1 coords
+    """
+    if job_id not in upload_jobs:
+        return {"error": "Job not found"}
+    
+    try:
+        result = next((r for r in upload_jobs[job_id]["results"] if r["filename"] == filename), None)
+        if not result or result["status"] != "needs_positioning":
+            return {"error": "File not found in positioning queue"}
+        
+        staging_path = Path(result["staging_path"])
+        if not staging_path.exists():
+            return {"error": "Staging file not found"}
+        
+        folder_id = upload_jobs[job_id]["folder_id"]
+        
+        # Get folder path
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute('SELECT path FROM folders WHERE id = ?', (folder_id,))
+        folder_result = cursor.fetchone()
+        conn.close()
+        
+        if not folder_result:
+            return {"error": "Folder not found"}
+        
+        folder_path = Path(folder_result[0])
+        
+        # Create image record
+        md5_hash = compute_md5(staging_path)
+        image_id = add_image_to_db(str(folder_path / filename), folder_id, md5_hash)
+        
+        if not image_id:
+            return {"error": "Failed to add image to database"}
+        
+        # Crop with user positioning
+        frameready_path = crop_and_export_frameready(staging_path, folder_path, image_id, crop_box)
+        
+        # Move to final location
+        final_path = folder_path / filename
+        staging_path.rename(final_path)
+        
+        # Update DB
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute('UPDATE images SET path = ? WHERE id = ?', (str(final_path), image_id))
+        conn.commit()
+        conn.close()
+        
+        # Update job result
+        result["status"] = "success"
+        result["id"] = image_id
+        result["frameready"] = frameready_path
+        
+        return {"status": "ok", "id": image_id, "frameready": frameready_path}
+        
     except Exception as e:
         return {"error": str(e)}
 
