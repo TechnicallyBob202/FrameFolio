@@ -9,7 +9,7 @@ import { ConfirmationModal } from './components/modals/ConfirmationModal'
 import { UploadProgressModal } from './components/modals/UploadProgressModal'
 import { DuplicateModal } from './components/modals/DuplicateModal'
 import { CropPositioningModal } from './components/modals/CropPositioningModal'
-import { TagDialog } from './components/modals/TagDialog'
+
 import * as api from './services/api'
 import logoImg from './assets/logo/framefolio_logo.png'
 import iconWhite from './assets/icons/framefolio_icon_white.png'
@@ -47,11 +47,9 @@ export default function App() {
   const [showTagModal, setShowTagModal] = useState(false)
   const [tagInput, setTagInput] = useState('')
   const [selectedTags, setSelectedTags] = useState(new Set())
-  const [showTagDialog, setShowTagDialog] = useState(false)
 
   // Image detail panel state
   const [detailPanelTags, setDetailPanelTags] = useState([])
-  const [tagSearchInput, setTagSearchInput] = useState('')
 
   // Confirmation modal state
   const [confirmation, setConfirmation] = useState(null)
@@ -85,12 +83,7 @@ export default function App() {
     }
   }, [selectedImage])
 
-  // Show tag dialog when image(s) are selected
-  useEffect(() => {
-    if ((selectedImage || selectedImages.size > 0) && !showTagDialog) {
-      setShowTagDialog(true)
-    }
-  }, [selectedImage, selectedImages.size, showTagDialog])
+
 
   async function browseFoldersHandler(path) {
     setFolderLoading(true)
@@ -872,17 +865,6 @@ export default function App() {
           cancelText="Cancel"
         />
       )}
-
-      <TagDialog
-        isOpen={showTagDialog}
-        onClose={() => setShowTagDialog(false)}
-        selectedImage={selectedImage}
-        selectedImages={selectedImages}
-        tags={images}
-        onAddTag={handleAddTagToSelectedImage}
-        onCreateTag={handleCreateTagForDialog}
-        existingTags={tags}
-      />
 
       {/* INFO BANNER / WELCOME MODAL */}
       <InfoBanner />
