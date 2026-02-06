@@ -134,15 +134,21 @@ ensure_staging_dir()
 
 # HELPER FUNCTIONS
 
-def find_frameready_on_disk(image_path: str, image_id: int):
-    """Find FrameReady file on disk if not in DB"""
+def find_frameready_on_disk(image_path: str):
+    """Find FrameReady file on disk if not in DB based on original filename"""
     try:
         img_path = Path(image_path)
+        # Extract original filename to match frameready file
+        original_name = img_path.stem  # filename without extension
+        original_ext = img_path.suffix  # .jpg, .png, etc
+        frameready_filename = f"{original_name}_fr{original_ext}"
+        
         if not img_path.parent.exists():
             return None
+        # Search in all .frameready_* folders for this specific file
         for frameready_dir in img_path.parent.glob('.frameready_*'):
             if frameready_dir.is_dir():
-                frameready_file = frameready_dir / f"{image_id}.jpg"
+                frameready_file = frameready_dir / frameready_filename
                 if frameready_file.exists():
                     return str(frameready_file)
         return None
@@ -280,7 +286,7 @@ def delete_image_completely(image_id):
     
     # Try disk if not in DB
     if not frameready_path:
-        frameready_path = find_frameready_on_disk(img["path"], image_id)
+        frameready_path = find_frameready_on_disk(img["path"])
     
     # Delete from database first
     delete_image_from_db(image_id)
@@ -462,9 +468,67 @@ def add_folder(path: str):
         return {"error": str(e)}
 
 @app.delete("/api/folders/{folder_id}")
-def remove_folder(folder_id: int):
+def remove_folder(folder_id: int, delete_originals: bool = False, delete_frameready: bool = False):
     try:
+        # Get folder info and all images in it
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        # Get folder path and frameready folder
+        cursor.execute('SELECT path, frameready_folder FROM folders WHERE id = ?', (folder_id,))
+        folder_result = cursor.fetchone()
+        
+        if not folder_result:
+            conn.close()
+            return {"error": "Folder not found"}
+        
+        folder_path_str, frameready_folder_name = folder_result
+        folder_path = Path(folder_path_str)
+        
+        # Get all images in this folder
+        cursor.execute('SELECT id, path, frameready_path FROM images WHERE folder_id = ?', (folder_id,))
+        images = cursor.fetchall()
+        conn.close()
+        
+        # Delete files if requested
+        for image_id, image_path, frameready_path in images:
+            if delete_originals:
+                try:
+                    img_file = Path(image_path)
+                    if img_file.exists():
+                        img_file.unlink()
+                except Exception:
+                    pass
+            
+            if delete_frameready:
+                # Check DB first
+                if frameready_path and Path(frameready_path).exists():
+                    try:
+                        Path(frameready_path).unlink()
+                    except Exception:
+                        pass
+                else:
+                    # Try disk search
+                    disk_frameready = find_frameready_on_disk(image_path)
+                    if disk_frameready and Path(disk_frameready).exists():
+                        try:
+                            Path(disk_frameready).unlink()
+                        except Exception:
+                            pass
+        
+        # Try to cleanup empty frameready directory
+        if frameready_folder_name:
+            try:
+                frameready_dir = folder_path / frameready_folder_name
+                if frameready_dir.exists() and frameready_dir.name.startswith('.frameready_'):
+                    if not any(frameready_dir.iterdir()):
+                        frameready_dir.rmdir()
+            except Exception:
+                pass
+        
+        # Delete from database
         remove_folder_from_db(folder_id)
+        
         return {"status": "ok"}
     except Exception as e:
         return {"error": str(e)}
@@ -1091,7 +1155,7 @@ def get_frameready(image_id: int):
         
         # Try disk if not in DB
         if not frameready_path:
-            frameready_path = find_frameready_on_disk(img["path"], image_id)
+            frameready_path = find_frameready_on_disk(img["path"])
         
         # Return FrameReady if it exists
         if frameready_path and Path(frameready_path).exists():
@@ -1136,7 +1200,7 @@ def download_image(image_id: int):
             file_path = Path(frameready_path)
         else:
             # Try to find on disk if not in DB
-            disk_frameready = find_frameready_on_disk(img["path"], image_id)
+            disk_frameready = find_frameready_on_disk(img["path"])
             if disk_frameready and Path(disk_frameready).exists():
                 file_path = Path(disk_frameready)
         
@@ -1187,7 +1251,7 @@ def download_zip(req: DownloadZipRequest):
                         file_path = Path(frameready_path)
                     else:
                         # Try to find on disk if not in DB
-                        disk_frameready = find_frameready_on_disk(img["path"], image_id)
+                        disk_frameready = find_frameready_on_disk(img["path"])
                         if disk_frameready and Path(disk_frameready).exists():
                             file_path = Path(disk_frameready)
                     

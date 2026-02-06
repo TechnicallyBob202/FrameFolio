@@ -127,6 +127,7 @@ def crop_and_export_frameready(
     Crop image to 16:9 and export to .frameready_* folder at 3840x2160.
     crop_box: {x, y, width, height} in normalized 0-1 coords, or None for auto-center.
     frameready_folder: Name of the frameready folder (e.g., '.frameready_abc123'). Required.
+    Filename format: {original_name}_fr{original_ext}. If too long, truncates original_name.
     Returns: path to exported FrameReady file
     """
     library_root = Path(library_root)
@@ -137,6 +138,24 @@ def crop_and_export_frameready(
     
     image = Image.open(file_path)
     width, height = image.size
+    
+    # Extract original filename and extension
+    original_path = Path(file_path)
+    original_name = original_path.stem  # filename without extension
+    original_ext = original_path.suffix  # .jpg, .png, etc
+    
+    # Build new filename: original_name_fr.ext
+    new_filename = f"{original_name}_fr{original_ext}"
+    output_path = frameready_dir / new_filename
+    
+    # Check if filename exceeds 255 chars (filesystem limit)
+    MAX_FILENAME = 255
+    if len(output_path.name) > MAX_FILENAME:
+        # Truncate the original name to fit
+        max_name_len = MAX_FILENAME - len(f"_fr{original_ext}")
+        truncated_name = original_name[:max_name_len]
+        new_filename = f"{truncated_name}_fr{original_ext}"
+        output_path = frameready_dir / new_filename
     
     # Calculate crop region (16:9 aspect)
     target_crop_aspect = TARGET_ASPECT
@@ -168,9 +187,6 @@ def crop_and_export_frameready(
     
     # Resize to target resolution
     resized = cropped.resize((TARGET_WIDTH, TARGET_HEIGHT), Image.Resampling.LANCZOS)
-    
-    # Determine output format and save
-    output_path = frameready_dir / f"{image_id}_frameready.jpg"
     
     # Preserve EXIF if available
     try:
